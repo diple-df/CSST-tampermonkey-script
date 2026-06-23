@@ -6,6 +6,9 @@
 > **Author:** diple_df x claude
 
 ---
+<img width="1464" height="1003" alt="demonstration" src="https://github.com/user-attachments/assets/69efd48d-b115-43b8-ac1d-ee034f411e82" />
+<img width="1920" height="1040" alt="image" src="https://github.com/user-attachments/assets/3f7ddf48-92a2-4c2a-9136-fb44f3472d7e" />
+
 
 
 ## Installation
