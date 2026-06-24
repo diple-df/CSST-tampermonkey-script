@@ -19,7 +19,7 @@ The script requires a browser extension to run. Supported managers:
 
 | Extension | Chrome | Firefox | Edge |
 |---|---|---|---|
-| **Tampermonkey** (recommended) | ✓ | ✓ | ✓ |
+| **[Tampermonkey](https://www.tampermonkey.net/)** (recommended) | ✓ | ✓ | ✓ |
 | Violentmonkey | ✓ | ✓ | ✓ |
 | Greasemonkey | — | ✓ | — |
 
