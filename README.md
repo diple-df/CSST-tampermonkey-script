@@ -29,10 +29,7 @@ Install the extension from your browser's official add-on store.
 
 **Option A — via GitHub Raw link (easiest):**
 
-1. Open `csst_tmprmnk.js` on GitHub
-2. Click the **Raw** button
-3. Tampermonkey will automatically detect the script and prompt you to install it
-4. Click **Install**
+1. Click [install](https://raw.githubusercontent.com/diple-df/CSST-tampermonkey-script/main/csst_tmprmnk.user.js)
 
 **Option B — manually:**
 
