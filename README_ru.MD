@@ -26,10 +26,7 @@
 
 **Вариант А — через Raw-ссылку GitHub (самый простой):**
 
-1. Откройте файл `csst_tmprmnk.js` на GitHub
-2. Нажмите кнопку **Raw**
-3. Tampermonkey автоматически распознает скрипт и предложит его установить
-4. Нажмите **Install**
+1. Нажмите [установить](https://raw.githubusercontent.com/diple-df/CSST-tampermonkey-script/main/csst_tmprmnk.user.js)
 
 **Вариант Б — вручную:**
 
