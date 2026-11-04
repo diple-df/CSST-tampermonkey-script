@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Custom Search System Tabs
 // @namespace    https://github.com/diple-df/CSST-tampermonkey-script
-// @version      1.2.0
+// @version      1.2.1
 // @description  Скрывай, переименовывай, перенаправляй и добавляй кнопки-вкладки поиска. Работает в Google, Яндекс, Bing и DuckDuckGo. Поддержка {query} для подстановки запроса.
 // @author       diple_df x claude
 // @match        *://duckduckgo.com/*
@@ -762,6 +762,8 @@
                 <button class="usc-btn usc-btn-add" id="usc-add-custom">${escHtml(t('add'))}</button>
             </div>
             <div class="usc-foot">
+                <button class="usc-btn" id="usc-export">Export</button>
+                <button class="usc-btn" id="usc-import">Import</button>
                 <button class="usc-btn usc-btn-reset" id="usc-reset">${escHtml(t('reset'))}</button>
                 <button class="usc-btn usc-btn-save" id="usc-close-2">${escHtml(t('close'))}</button>
             </div>
@@ -915,6 +917,43 @@
             }
         };
 
+        document.getElementById('usc-export').onclick = () => {
+            try {
+                const data = JSON.stringify(loadConfig(), null, 2);
+                const blob = new Blob([data], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'csst-config.json';
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            } catch (e) {}
+        };
+
+        document.getElementById('usc-import').onclick = () => {
+            const input = document.createElement('input');
+            input.type = 'file';
+            input.accept = 'application/json';
+            input.onchange = (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+                const reader = new FileReader();
+                reader.onload = (ev) => {
+                    try {
+                        const parsed = JSON.parse(ev.target.result);
+                        if (parsed && typeof parsed === 'object') {
+                            saveConfig(parsed);
+                            location.reload();
+                        }
+                    } catch (err) {}
+                };
+                reader.readAsText(file);
+            };
+            input.click();
+        };
+
         const body = panel.querySelector('.usc-body');
         body.addEventListener('input',  () => liveSave(cfg));
         body.addEventListener('change', () => liveSave(cfg));
@@ -993,8 +1032,7 @@
         }
         .usc-backdrop {
             position: absolute; inset: 0;
-            background: rgba(0,0,0,.35);
-            backdrop-filter: blur(1px);
+            background: transparent;
         }
 
         /* ── Боковая панель (очень компактная и удобная) ── */
@@ -1107,7 +1145,7 @@
             background: #fff; border: 1px solid #e0e0e0; border-radius: 5px;
             padding: 4px 6px; transition: all .12s ease;
         }
-        .usc-custom-inputs { display: flex; flex-direction: column; gap: 3px; flex: 1; }
+        .usc-custom-inputs { display: flex; flex-direction: column; gap: 3px; flex: 1; min-width: 0; }
         .usc-custom-row input {
             width: 100%; padding: 3.5px 6px; border: 1px solid #d5d5d5; border-radius: 4px;
             font-size: 11.5px; outline: none; background: #fff; color: #222;
@@ -1119,17 +1157,20 @@
 
         /* ── Подвал ── */
         .usc-foot {
-            padding: 7px 10px; border-top: 1px solid #e0e0e0;
-            display: flex; gap: 5px; justify-content: space-between;
+            padding: 8px 10px; border-top: 1px solid #e0e0e0;
+            display: flex; gap: 6px; flex-wrap: wrap;
             background: #fff; flex-shrink: 0;
+            justify-content: center;
         }
 
         /* ── Кнопки ── */
         .usc-btn {
-            padding: 5px 10px; border-radius: 4px; border: 1px solid #d5d5d5;
-            font-size: 11.5px; font-weight: 500; cursor: pointer;
+            padding: 5px 12px; border-radius: 4px; border: 1px solid #d5d5d5;
+            font-size: 11px; font-weight: 500; cursor: pointer;
             background: #f0f0f0; color: #444;
-            transition: background .12s, border-color .12s; line-height: 1;
+            transition: background .12s, border-color .12s; line-height: 1.2;
+            white-space: nowrap;
+            min-width: 60px;
         }
         .usc-btn:hover { background: #e5e5e5; border-color: #bcbcbc; }
         .usc-btn-save { background: ${ACCENT}; color: #fff; border-color: ${ACCENT}; }
@@ -1148,7 +1189,7 @@
         .usc-btn-reset:hover { background: #e5e5e5; }
 
         /* ════════ ТЁМНАЯ ТЕМА ════════ */
-        #usc-panel.usc-dark .usc-backdrop { background: rgba(0,0,0,.55); }
+        #usc-panel.usc-dark .usc-backdrop { background: transparent; }
         #usc-panel.usc-dark .usc-modal { background: #161616; box-shadow: -6px 0 25px rgba(0,0,0,.6); }
         #usc-panel.usc-dark .usc-head { background: #161616; border-bottom-color: ${ACCENT}; }
         #usc-panel.usc-dark .usc-title { color: #f0f0f0; }
