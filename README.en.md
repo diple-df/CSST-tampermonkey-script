@@ -43,20 +43,24 @@ Go to any supported search engine and type a query — a settings button (≡) w
 
 ## Supported Search Engines
 
-| Search Engine | Domains | Accent Color | Button in tab bar |
+| Search Engine | Domains | Accent Color | Button + panel |
 |---|---|---|---|
 | **Google** | `google.com`, `google.co.uk`, `google.ru` and all other regional domains | Blue `#4285f4` | ✓ verified live |
 | **Yandex** | `yandex.ru`, `yandex.com`, `yandex.by`, `yandex.kz`, `yandex.com.tr`, `ya.ru` | Red `#fc3f1d` | ✓ verified live |
 | **Bing** | `bing.com` | Teal `#008373` | ✓ verified live |
 | **DuckDuckGo** | `duckduckgo.com` | Orange `#de5833` | ✓ verified live |
-| **Ecosia** | `ecosia.org` | Green `#007a33` | ✓ selectors matched to real markup |
-| **Startpage** | `startpage.com` | Blue-teal `#0d7ea8` | ✓ selectors matched to real markup |
-| **Brave Search** | `search.brave.com` | Orange-red `#fb542b` | ✓ matched against live HTML |
+| **Ecosia** | `ecosia.org` | Green `#007a33` | ✓ selectors checked against real markup |
+| **Brave Search** | `search.brave.com` | Orange-red `#fb542b` | ✓ checked against live HTML |
 | **Qwant** | `qwant.com` | Purple `#4a4af4` | ✓ verified live |
+| **Startpage** | `startpage.com` | Blue-teal `#0d7ea8` | button + panel ✓; hiding/renaming sections — no |
 
 The button's size and alignment adapt to each engine's tab bar: it is smaller on Bing's short scopebar, rounder and larger on Google and Yandex, and so on.
 
-> "Verified live" means a run in a real browser on the real page. For Ecosia, Startpage and Brave the selectors were matched against their actual markup (live response for Brave; archived snapshots for Ecosia and Startpage), because from some networks all three serve a bot check. If the button does not appear for you, open the console and inspect `window.__csstDiag` (see below).
+### Startpage caveat
+
+The current Startpage layout renders its search sections as buttons inside POST forms, not as links. The script finds the section strip and shows the ≡ button with a fully working settings panel, but **cannot hide, rename, or redirect the sections themselves** — they are not links. Custom buttons, presets, import/export, and every other setting still work.
+
+> Ecosia, Brave, and Startpage serve a "are you a robot" wall from some networks. If the button does not appear, open the Tampermonkey menu → **Diagnostics**: it shows which engine was detected, which container was found, and how many tabs were recognised.
 
 Settings are stored **separately per search engine** — changes in Google do not affect Yandex.
 
