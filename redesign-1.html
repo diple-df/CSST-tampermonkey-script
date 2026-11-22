@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CSST — редизайн 1: монохром / волосяные линии</title>
+<!--
+  НАПРАВЛЕНИЕ 1 из 5 — «Монохромные волосяные линии».
+  Идея: никакого акцентного цвета, никаких теней и скруглений крупнее 4px.
+  Разделение только линиями 1px и плотной типографической сеткой.
+  Панель — правая док-колонка во всю высоту, строки плоские, без карточек.
+-->
+<style>
+  :root{
+    --ink:#111111;
+    --ink-2:#5c5c5c;
+    --ink-3:#8a8a8a;
+    --line:#e4e4e4;
+    --line-strong:#111111;
+    --bg:#ffffff;
+    --bg-soft:#fafafa;
+    --radius:4px;
+    --pad:16px;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{
+    font:13px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
+    color:var(--ink);background:var(--bg);
+    -webkit-font-smoothing:antialiased;
+    /* оставляем место справа под открытую панель, чтобы кнопка CSST оставалась видна */
+    padding-right:352px;
+  }
+  @media (max-width:900px){
+    body{padding-right:0}
+  }
+  .label{
+    font-size:9.5px;letter-spacing:.09em;text-transform:uppercase;
+    color:var(--ink-3);font-weight:600;
+  }
+
+  /* ── Шапка поисковика ── */
+  .site-head{border-bottom:1px solid var(--line);padding:14px 24px 0}
+  .site-head-row{display:flex;align-items:center;gap:16px;max-width:1120px}
+  .brand{
+    font-size:15px;font-weight:700;letter-spacing:-.02em;
+    display:flex;align-items:center;gap:8px;flex:0 0 auto;
+  }
+  .brand-mark{
+    width:20px;height:20px;border:1.5px solid var(--ink);
+    display:grid;place-items:center;font-size:10px;font-weight:700;
+  }
+  .searchbox{
+    flex:1 1 auto;display:flex;align-items:center;gap:10px;
+    border:1px solid var(--line-strong);border-radius:var(--radius);
+    padding:0 12px;height:34px;max-width:560px;
+  }
+  .searchbox input{
+    flex:1 1 auto;border:0;outline:0;font:inherit;font-size:13px;
+    background:transparent;color:var(--ink);
+  }
+  .searchbox .go{
+    border:0;border-left:1px solid var(--line);background:transparent;
+    font:inherit;font-size:11px;letter-spacing:.06em;text-transform:uppercase;
+    color:var(--ink-2);padding:0 0 0 12px;cursor:pointer;height:20px;
+  }
+  .searchbox .go:hover{color:var(--ink)}
+
+  /* ── Строка вкладок ── */
+  .tabbar{display:flex;align-items:center;gap:22px;max-width:1120px;margin-top:2px}
+  .tab{
+    appearance:none;background:none;border:0;padding:11px 0 9px;
+    font:inherit;font-size:13px;color:var(--ink-2);cursor:pointer;
+    border-bottom:2px solid transparent;margin-bottom:-1px;
+  }
+  .tab:hover{color:var(--ink)}
+  .tab[aria-selected="true"]{color:var(--ink);font-weight:600;border-bottom-color:var(--ink)}
+  .tab-right{margin-left:auto;display:flex;align-items:center;gap:14px}
+
+  /* ── Кнопка CSST ── */
+  .csst-btn{
+    appearance:none;background:none;border:1px solid var(--line);
+    border-radius:var(--radius);width:28px;height:26px;cursor:pointer;
+    display:grid;place-items:center;padding:0;
+    transition:border-color .12s ease,background .12s ease;
+  }
+  .csst-btn:hover{border-color:var(--ink);background:var(--bg-soft)}
+  .csst-btn:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+  .csst-glyph{display:flex;flex-direction:column;gap:3px}
+  .csst-glyph i{display:block;width:12px;height:1.5px;background:var(--ink)}
+  .csst-btn:hover .csst-glyph i:nth-child(2){width:8px}
+
+  /* ── Результаты (фон) ── */
+  .results{max-width:660px;margin:26px auto 80px;padding:0 24px}
+  .results .count{font-size:11px;color:var(--ink-3);margin-bottom:18px}
+  .hit{margin-bottom:26px}
+  .hit .url{font-size:11px;color:var(--ink-3);margin-bottom:3px}
+  .hit h2{margin:0 0 4px;font-size:15px;font-weight:600;line-height:1.3}
+  .hit h2 a{color:var(--ink);text-decoration:underline;text-decoration-color:var(--line-strong);text-underline-offset:3px;text-decoration-thickness:1px}
+  .hit p{margin:0;font-size:13px;color:var(--ink-2)}
+
+  /* ── Панель ── */
+  .panel{
+    position:fixed;top:0;right:0;bottom:0;width:352px;
+    background:var(--bg);border-left:1px solid var(--line-strong);
+    display:flex;flex-direction:column;
+  }
+  .panel-head{
+    display:flex;align-items:center;justify-content:space-between;
+    padding:14px var(--pad) 12px;border-bottom:1px solid var(--line);
+  }
+  .panel-head h2{
+    margin:0;font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;
+  }
+  .panel-close{
+    appearance:none;border:1px solid transparent;background:none;cursor:pointer;
+    width:24px;height:24px;display:grid;place-items:center;border-radius:var(--radius);
+    color:var(--ink-2);font-size:14px;line-height:1;
+  }
+  .panel-close:hover{border-color:var(--line);color:var(--ink)}
+  .panel-close:focus-visible{outline:2px solid var(--ink);outline-offset:1px}
+
+  .panel-body{flex:1 1 auto;overflow-y:auto}
+  .group{border-bottom:1px solid var(--line);padding:12px var(--pad)}
+  .group-head{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:2px}
+  .group-note{font-size:10.5px;color:var(--ink-3)}
+
+  /* плоская строка вкладки */
+  .row{padding:9px 0;border-bottom:1px solid var(--line)}
+  .row:last-child{border-bottom:0;padding-bottom:2px}
+  .row.is-hidden .row-name{color:var(--ink-3);text-decoration:line-through}
+  .row-top{display:flex;align-items:center;justify-content:space-between;gap:10px}
+  .row-name{font-size:13px;font-weight:600;letter-spacing:-.01em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .row-tools{display:flex;align-items:center;gap:8px;flex:0 0 auto}
+
+  /* переключатель-квадрат */
+  .sw{display:inline-flex;align-items:center;gap:6px;cursor:pointer;user-select:none}
+  .sw span.txt{font-size:9.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3);font-weight:600}
+  .sw input{position:absolute;opacity:0;width:0;height:0}
+  .sw .box{
+    width:14px;height:14px;border:1px solid var(--ink-3);border-radius:2px;
+    display:grid;place-items:center;transition:border-color .12s,background .12s;
+  }
+  .sw .box::after{content:"";width:7px;height:4px;border-left:1.5px solid #fff;border-bottom:1.5px solid #fff;transform:rotate(-45deg) translateY(-1px);opacity:0}
+  .sw input:checked + .box{background:var(--ink);border-color:var(--ink)}
+  .sw input:checked + .box::after{opacity:1}
+  .sw input:focus-visible + .box{outline:2px solid var(--ink);outline-offset:2px}
+  .sw:hover .box{border-color:var(--ink)}
+
+  /* поля */
+  .fields{display:grid;gap:7px;margin-top:8px}
+  .field{display:grid;gap:3px}
+  .field > label{font-size:9.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3);font-weight:600;display:flex;justify-content:space-between;gap:8px}
+  .field > label em{font-style:normal;text-transform:none;letter-spacing:0;font-weight:400;color:var(--ink-3);font-size:10px}
+  .input,.select{
+    width:100%;height:28px;border:1px solid var(--line);border-radius:var(--radius);
+    background:var(--bg);padding:0 8px;font:inherit;font-size:12px;color:var(--ink);outline:0;
+    transition:border-color .12s ease,box-shadow .12s ease;
+    min-width:0;text-overflow:ellipsis;
+  }
+  .input:hover,.select:hover{border-color:#c9c9c9}
+  .input:focus,.select:focus{border-color:var(--ink);box-shadow:0 0 0 2px rgba(17,17,17,.08)}
+  .row.is-hidden .fields{display:none}
+  .row-more{
+    appearance:none;border:0;background:none;padding:0;cursor:pointer;
+    font:inherit;font-size:10.5px;color:var(--ink-3);text-decoration:underline;
+    text-underline-offset:2px;
+  }
+  .row-more:hover{color:var(--ink)}
+
+  /* кастомные кнопки */
+  .custom-row{
+    display:flex;gap:7px;align-items:flex-start;
+    padding:9px 0;border-bottom:1px solid var(--line);
+  }
+  .custom-row:last-child{border-bottom:0}
+  .custom-row .stack{flex:1 1 auto;display:grid;gap:5px;min-width:0}
+  .del{
+    appearance:none;border:1px solid var(--line);background:none;border-radius:var(--radius);
+    width:28px;height:28px;flex:0 0 auto;cursor:pointer;color:var(--ink-3);font-size:13px;line-height:1;
+    display:grid;place-items:center;
+  }
+  .del:hover{border-color:var(--ink);color:var(--ink)}
+  .del:focus-visible{outline:2px solid var(--ink);outline-offset:1px}
+
+  .add-btn{
+    appearance:none;width:100%;margin-top:10px;height:30px;
+    border:1px dashed #c9c9c9;background:none;border-radius:var(--radius);
+    font:inherit;font-size:11px;color:var(--ink-2);cursor:pointer;
+    transition:border-color .12s,color .12s,background .12s;
+  }
+  .add-btn:hover{border-color:var(--ink);color:var(--ink);background:var(--bg-soft)}
+  .add-btn:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+
+  /* подвал */
+  .panel-foot{
+    border-top:1px solid var(--line);padding:12px var(--pad);
+    display:flex;gap:7px;align-items:center;flex-wrap:wrap;
+  }
+  .btn{
+    appearance:none;height:28px;padding:0 10px;border-radius:var(--radius);
+    border:1px solid var(--line);background:var(--bg);font:inherit;font-size:11.5px;
+    color:var(--ink-2);cursor:pointer;
+  }
+  .btn:hover{border-color:var(--ink);color:var(--ink)}
+  .btn:focus-visible{outline:2px solid var(--ink);outline-offset:1px}
+  .btn-primary{background:var(--ink);border-color:var(--ink);color:#fff;margin-left:auto}
+  .btn-primary:hover{background:#000;color:#fff}
+
+  /* служебный футер страницы */
+  .page-foot{
+    position:fixed;left:0;bottom:0;right:352px;
+    border-top:1px solid var(--line);background:var(--bg);
+    padding:8px 24px;font-size:10.5px;color:var(--ink-3);
+  }
+  .page-foot b{color:var(--ink-2);font-weight:600}
+  @media (max-width:900px){
+    .panel{width:100%;border-left:0}
+    .page-foot{right:0}
+  }
+</style>
+</head>
+<body>
+
+<header class="site-head">
+  <div class="site-head-row">
+    <div class="brand"><span class="brand-mark">Я</span>Поиск</div>
+    <form class="searchbox" onsubmit="return false">
+      <input type="text" value="настройка вкладок поиска" aria-label="Поисковый запрос">
+      <button class="go" type="submit">Найти</button>
+    </form>
+  </div>
+  <div class="tabbar" role="tablist" aria-label="Разделы поиска">
+    <button class="tab" role="tab" aria-selected="true">Веб</button>
+    <button class="tab" role="tab" aria-selected="false">Картинки</button>
+    <button class="tab" role="tab" aria-selected="false">Видео</button>
+    <button class="tab" role="tab" aria-selected="false">Карты</button>
+    <button class="tab" role="tab" aria-selected="false">Новости</button>
+    <button class="tab" role="tab" aria-selected="false">Товары</button>
+    <div class="tab-right">
+      <button class="csst-btn" id="csstBtn" title="Настроить вкладки поиска" aria-label="Настроить вкладки поиска" aria-expanded="true">
+        <span class="csst-glyph" aria-hidden="true"><i></i><i></i><i></i></span>
+      </button>
+    </div>
+  </div>
+</header>
+
+<main class="results">
+  <div class="count">Примерно 184 000 результатов · 0,31 с</div>
+  <article class="hit">
+    <div class="url">docs.example.org › csst › tabbar</div>
+    <h2><a href="#">Как устроена строка вкладок поисковика</a></h2>
+    <p>Разбор DOM-структуры панели навигации: контейнер, обёртки вкладок и точки, за которые можно цепляться селекторами.</p>
+  </article>
+  <article class="hit">
+    <div class="url">habr.example.ru › posts › custom-search-tabs</div>
+    <h2><a href="#">Пользовательские вкладки поверх поиска: практика</a></h2>
+    <p>Что ломается при SPA-перерисовке, почему сторонние наблюдатели удаляют вставленные узлы и как это обходить.</p>
+  </article>
+  <article class="hit">
+    <div class="url">notes.example.com › ux › settings-panel</div>
+    <h2><a href="#">Боковая панель настроек: 12 правил плотности</a></h2>
+    <p>Высота строки, шаг подписей, поведение полей ввода и переключателей при ширине панели 320–360 px.</p>
+  </article>
+</main>
+
+<!-- ── Панель CSST ── -->
+<aside class="panel" id="panel" role="dialog" aria-modal="false" aria-label="Настройка вкладок">
+  <div class="panel-head">
+    <h2>Настройка вкладок</h2>
+    <button class="panel-close" id="closeBtn" aria-label="Закрыть">✕</button>
+  </div>
+
+  <div class="panel-body">
+    <section class="group">
+      <div class="group-head">
+        <span class="label">Стандартные вкладки</span>
+        <span class="group-note">6 найдено</span>
+      </div>
+
+      <div class="row">
+        <div class="row-top">
+          <span class="row-name">Веб</span>
+          <div class="row-tools">
+            <label class="sw"><input type="checkbox"><span class="box"></span><span class="txt">Скрыть</span></label>
+          </div>
+        </div>
+        <div class="fields">
+          <div class="field">
+            <label>Подпись <em>как в поисковике</em></label>
+            <input class="input" type="text" value="Веб">
+          </div>
+          <div class="field">
+            <label>Быстрый выбор сервиса</label>
+            <select class="select">
+              <option>— выберите пресет —</option>
+              <option>Яндекс</option>
+              <option>Google</option>
+              <option>DuckDuckGo</option>
+              <option>↩ Оригинальная вкладка</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>URL редиректа <em>пусто = оригинал</em></label>
+            <input class="input" type="text" value="" placeholder="домен/путь?text={query}">
+          </div>
+        </div>
+      </div>
+
+      <div class="row is-hidden">
+        <div class="row-top">
+          <span class="row-name">Картинки</span>
+          <div class="row-tools">
+            <label class="sw"><input type="checkbox" checked><span class="box"></span><span class="txt">Скрыть</span></label>
+          </div>
+        </div>
+        <div class="fields">
+          <div class="field">
+            <label>Подпись</label>
+            <input class="input" type="text" value="Картинки">
+          </div>
+        </div>
+      </div>
+
+      <div class="row is-hidden">
+        <div class="row-top">
+          <span class="row-name">Видео</span>
+          <div class="row-tools">
+            <label class="sw"><input type="checkbox"><span class="box"></span><span class="txt">Скрыть</span></label>
+          </div>
+        </div>
+        <div class="fields">
+          <div class="field">
+            <label>URL редиректа</label>
+            <input class="input" type="text" value="youtube.com/results?search_query={query}">
+          </div>
+        </div>
+      </div>
+
+      <div class="row">
+        <div class="row-top">
+          <span class="row-name">Карты</span>
+          <div class="row-tools">
+            <label class="sw"><input type="checkbox"><span class="box"></span><span class="txt">Скрыть</span></label>
+            <button class="row-more">+ поля</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="group">
+      <div class="group-head">
+        <span class="label">Кастомные кнопки</span>
+        <span class="group-note">{query} подставляет запрос</span>
+      </div>
+
+      <div class="custom-row">
+        <div class="stack">
+          <input class="input" type="text" value="GitHub" aria-label="Подпись кнопки">
+          <input class="input" type="text" value="github.com/search?q={query}" aria-label="URL кнопки">
+        </div>
+        <button class="del" aria-label="Удалить кнопку">✕</button>
+      </div>
+
+      <div class="custom-row">
+        <div class="stack">
+          <input class="input" type="text" value="Перевод" aria-label="Подпись кнопки">
+          <input class="input" type="text" value="translate.google.com/?text={query}&sl=auto&tl=ru" aria-label="URL кнопки">
+        </div>
+        <button class="del" aria-label="Удалить кнопку">✕</button>
+      </div>
+
+      <button class="add-btn" id="addBtn">+ Добавить кнопку</button>
+    </section>
+  </div>
+
+  <div class="panel-foot">
+    <button class="btn">Экспорт</button>
+    <button class="btn">Импорт</button>
+    <button class="btn">Сбросить</button>
+    <button class="btn btn-primary" id="doneBtn">Готово</button>
+  </div>
+</aside>
+
+<footer class="page-foot">
+  <b>Направление 1 — монохромные волосяные линии.</b>
+  Плюсы: не спорит с брендом поисковика, дёшево в поддержке, отлично читается на любом фоне.
+  Минусы: слабая иерархия для длинных списков, нет визуального акцента на действии, плотность утомляет при 10+ вкладках.
+</footer>
+
+<script>
+  // Минимальная интерактивность: закрытие панели, переключение «Скрыть», добавление строки.
+  var panel = document.getElementById('panel');
+  var btn = document.getElementById('csstBtn');
+
+  function setOpen(open) {
+    panel.style.display = open ? 'flex' : 'none';
+    btn.setAttribute('aria-expanded', String(open));
+  }
+  document.getElementById('closeBtn').addEventListener('click', function () { setOpen(false); });
+  document.getElementById('doneBtn').addEventListener('click', function () { setOpen(false); });
+  btn.addEventListener('click', function () {
+    setOpen(panel.style.display === 'none');
+  });
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') setOpen(false);
+  });
+
+  // Переключатель «Скрыть» перечёркивает и сворачивает строку.
+  document.querySelectorAll('.sw input').forEach(function (cb) {
+    cb.addEventListener('change', function () {
+      var row = cb.closest('.row');
+      row.classList.toggle('is-hidden', cb.checked);
+    });
+  });
+
+  // «+ поля» раскрывает блок полей у свёрнутой строки.
+  document.querySelectorAll('.row-more').forEach(function (b) {
+    b.addEventListener('click', function () {
+      var row = b.closest('.row');
+      var f = row.querySelector('.fields');
+      if (!f) {
+        f = document.createElement('div');
+        f.className = 'fields';
+        f.innerHTML =
+          '<div class="field"><label>Подпись</label>' +
+          '<input class="input" type="text" value="Карты"></div>' +
+          '<div class="field"><label>URL редиректа</label>' +
+          '<input class="input" type="text" placeholder="домен/путь?text={query}"></div>';
+        row.appendChild(f);
+        b.textContent = '− поля';
+      } else {
+        f.remove();
+        b.textContent = '+ поля';
+      }
+    });
+  });
+
+  // Добавление кастомной кнопки.
+  document.getElementById('addBtn').addEventListener('click', function () {
+    var wrap = document.createElement('div');
+    wrap.className = 'custom-row';
+    wrap.innerHTML =
+      '<div class="stack">' +
+      '<input class="input" type="text" placeholder="Название" aria-label="Подпись кнопки">' +
+      '<input class="input" type="text" placeholder="домен/путь?q={query}" aria-label="URL кнопки">' +
+      '</div><button class="del" aria-label="Удалить кнопку">✕</button>';
+    this.parentNode.insertBefore(wrap, this);
+    wrap.querySelector('.del').addEventListener('click', function () { wrap.remove(); });
+  });
+
+  document.querySelectorAll('.del').forEach(function (d) {
+    d.addEventListener('click', function () { d.closest('.custom-row').remove(); });
+  });
+</script>
+</body>
+</html>

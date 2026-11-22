@@ -1,0 +1,544 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CSST — редизайн 4: компактный иконочный тулбар</title>
+<!--
+  НАПРАВЛЕНИЕ 4 из 5 — «Иконочный тулбар, раскрывающийся в строку».
+  Идея: в строке вкладок CSST занимает одну круглую иконку. При наведении/фокусе
+  она разворачивается в мини-панель быстрых действий (скрыть/переименовать/редирект).
+  Полный список — в отдельном поповере, но плотном: строки по 28px, иконки вместо подписей.
+-->
+<style>
+  :root{
+    --accent:#fc3f1d;
+    --ink:#101114;
+    --ink-2:#4d5160;
+    --ink-3:#8b8f9c;
+    --line:#e6e7eb;
+    --bg:#fff;
+    --bg-2:#f6f7f9;
+    --r:8px;
+    --shadow:0 14px 34px -10px rgba(16,17,20,.26), 0 2px 6px rgba(16,17,20,.07);
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{
+    font:13px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
+    color:var(--ink);background:var(--bg);-webkit-font-smoothing:antialiased;
+  }
+
+  /* ── Шапка ── */
+  .site-head{border-bottom:1px solid var(--line);padding:12px 20px 0}
+  .head-top{display:flex;align-items:center;gap:14px;max-width:1120px;margin:0 auto;padding-right:360px}
+  @media (max-width:960px){
+    .head-top{padding-right:0}
+  }
+  .brand{flex:0 0 auto;display:flex;align-items:center;gap:8px;font-size:17px;font-weight:700;letter-spacing:-.02em}
+  .brand-dot{width:9px;height:9px;border-radius:50%;background:var(--accent)}
+  .searchbox{
+    flex:1 1 auto;display:flex;align-items:center;gap:9px;max-width:540px;
+    height:38px;padding:0 12px;border:1.5px solid var(--accent);border-radius:var(--r);
+    background:var(--bg);
+  }
+  .searchbox svg{color:var(--ink-3);flex:0 0 auto}
+  .searchbox input{flex:1 1 auto;border:0;outline:0;font:inherit;font-size:13.5px;background:none;min-width:0;color:var(--ink)}
+  .searchbox kbd{
+    font:600 10px/1 ui-monospace,Consolas,monospace;color:var(--ink-3);
+    border:1px solid var(--line);border-radius:4px;padding:3px 5px;background:var(--bg-2);
+  }
+
+  /* ── Строка вкладок ── */
+  .tabbar{
+    display:flex;align-items:center;gap:18px;
+    max-width:1120px;margin:0 auto;padding:0;position:relative;
+  }
+  .tab{
+    appearance:none;border:0;background:none;padding:10px 0 9px;cursor:pointer;
+    font:inherit;font-size:13px;color:var(--ink-2);
+    border-bottom:2px solid transparent;margin-bottom:-1px;
+  }
+  .tab:hover{color:var(--ink)}
+  .tab[aria-selected="true"]{color:var(--accent);font-weight:600;border-bottom-color:var(--accent)}
+  .tab:focus-visible{outline:2px solid var(--accent);outline-offset:1px;border-radius:3px}
+  .tab-right{margin-left:auto;display:flex;align-items:center;gap:6px;padding-bottom:1px}
+
+  /* ── Кнопка CSST + раскрывающийся тулбар ── */
+  .csst-wrap{position:relative;display:flex;align-items:center}
+  .csst-btn{
+    appearance:none;cursor:pointer;flex:0 0 auto;
+    width:30px;height:30px;border-radius:50%;
+    border:1px solid var(--line);background:var(--bg);
+    display:grid;place-items:center;position:relative;z-index:2;
+    transition:border-color .14s,background .14s;
+  }
+  .csst-btn:hover,.csst-wrap:hover .csst-btn,.csst-btn[aria-expanded="true"]{
+    border-color:var(--accent);background:rgba(252,63,29,.07);
+  }
+  .csst-btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+  .g{display:flex;flex-direction:column;gap:2.5px}
+  .g i{display:block;width:13px;height:2px;border-radius:2px;background:var(--ink-2)}
+  .csst-btn:hover .g i{background:var(--accent)}
+
+  /* раскрывающаяся мини-панель быстрых действий */
+  .quick{
+    display:flex;align-items:center;gap:1px;
+    margin-left:-15px;padding:2px 3px 2px 19px;
+    border:1px solid var(--line);border-radius:999px;background:var(--bg);
+    max-width:0;opacity:0;overflow:hidden;pointer-events:none;
+    transition:max-width .18s cubic-bezier(.4,0,.2,1),opacity .14s ease;
+  }
+  .csst-wrap:hover .quick,
+  .csst-wrap:focus-within .quick,
+  .csst-btn[aria-expanded="true"] ~ .quick{
+    max-width:280px;opacity:1;pointer-events:auto;
+  }
+  .qa{
+    appearance:none;border:0;background:none;cursor:pointer;
+    width:28px;height:26px;border-radius:6px;color:var(--ink-2);
+    display:grid;place-items:center;flex:0 0 auto;
+    transition:background .12s,color .12s;
+  }
+  .qa:hover{background:var(--bg-2);color:var(--accent)}
+  .qa:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+  .qa-sep{width:1px;height:16px;background:var(--line);margin:0 3px;flex:0 0 auto}
+
+  /* ── Результаты ── */
+  .results{max-width:660px;margin:28px auto 150px;padding:0 20px}
+  .count{font-size:11.5px;color:var(--ink-3);margin-bottom:18px}
+  .hit{margin-bottom:22px}
+  .hit .url{font-size:11.5px;color:var(--ink-3);margin-bottom:3px}
+  .hit h2{margin:0 0 4px;font-size:16px;font-weight:600;line-height:1.3}
+  .hit h2 a{color:#1d4ed8;text-decoration:none}
+  .hit h2 a:hover{text-decoration:underline}
+  .hit p{margin:0;font-size:13px;color:var(--ink-2)}
+
+  /* ── Поповер-панель ── */
+  .panel{
+    position:fixed;top:112px;right:20px;width:340px;max-height:calc(100vh - 150px);
+    display:flex;flex-direction:column;
+    background:var(--bg);border:1px solid var(--line);border-radius:var(--r);
+    box-shadow:var(--shadow);overflow:hidden;
+  }
+  .panel-top{
+    display:flex;align-items:center;gap:8px;
+    padding:9px 10px 9px 12px;border-bottom:1px solid var(--line);
+  }
+  .panel-top h2{margin:0;font-size:12px;font-weight:700;letter-spacing:.02em}
+  .panel-engine{
+    font-size:10px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;
+    color:var(--accent);background:rgba(252,63,29,.09);
+    border-radius:4px;padding:2px 5px;
+  }
+  .icon-btn{
+    appearance:none;margin-left:auto;flex:0 0 auto;
+    width:24px;height:24px;border-radius:5px;cursor:pointer;
+    border:1px solid transparent;background:none;color:var(--ink-3);
+    display:grid;place-items:center;font-size:12px;line-height:1;
+  }
+  .icon-btn:hover{background:var(--bg-2);color:var(--ink);border-color:var(--line)}
+  .icon-btn:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+
+  /* компактное поле поиска внутри панели */
+  .filter{padding:7px 10px;border-bottom:1px solid var(--line);background:var(--bg-2)}
+  .filter input{
+    width:100%;height:28px;border:1px solid var(--line);border-radius:6px;
+    padding:0 8px 0 27px;font:inherit;font-size:12px;outline:0;background:var(--bg);
+    transition:border-color .12s,box-shadow .12s;
+  }
+  .filter input:focus{border-color:var(--accent);box-shadow:0 0 0 2px rgba(252,63,29,.14)}
+  .filter{position:relative}
+  .filter svg{position:absolute;left:17px;top:15px;color:var(--ink-3);pointer-events:none}
+
+  .panel-body{flex:1 1 auto;overflow-y:auto}
+
+  /* плотная строка-таблица */
+  .row{
+    display:grid;grid-template-columns:1fr auto;align-items:center;gap:8px;
+    padding:6px 10px 6px 12px;border-bottom:1px solid var(--line);min-height:36px;
+  }
+  .row:hover{background:var(--bg-2)}
+  .row.is-hidden{opacity:.55}
+  .row.is-hidden .row-name{text-decoration:line-through}
+  .row-name{
+    font-size:12.5px;font-weight:600;min-width:0;
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  }
+  .row-actions{display:flex;align-items:center;gap:1px;flex:0 0 auto}
+  .act{
+    appearance:none;border:0;background:none;cursor:pointer;
+    width:24px;height:24px;border-radius:5px;color:var(--ink-3);
+    display:grid;place-items:center;flex:0 0 auto;
+    transition:background .12s,color .12s;
+  }
+  .act:hover{background:#fff;color:var(--ink);box-shadow:inset 0 0 0 1px var(--line)}
+  .act.is-on{color:var(--accent);background:rgba(252,63,29,.1)}
+  .act:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+
+  /* раскрывающаяся настройка строки */
+  .row-detail{
+    grid-column:1 / -1;display:none;gap:6px;
+    padding:2px 0 6px;grid-template-columns:1fr 1fr;
+  }
+  .row.is-open .row-detail{display:grid}
+  .row-detail .wide{grid-column:1 / -1}
+  .mini{display:grid;gap:2px}
+  .mini > span{font-size:9px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--ink-3)}
+  .mini input,.mini select{
+    width:100%;height:26px;border:1px solid var(--line);border-radius:5px;
+    padding:0 7px;font:inherit;font-size:11.5px;background:var(--bg);outline:0;color:var(--ink);
+    -webkit-appearance:none;appearance:none;
+  }
+  .mini select{
+    padding-right:22px;
+    background-image:linear-gradient(45deg,transparent 50%,var(--ink-3) 50%),linear-gradient(135deg,var(--ink-3) 50%,transparent 50%);
+    background-position:calc(100% - 12px) 11px, calc(100% - 8px) 11px;
+    background-size:4px 4px,4px 4px;background-repeat:no-repeat;
+  }
+  .mini input:focus,.mini select:focus{border-color:var(--accent);box-shadow:0 0 0 2px rgba(252,63,29,.14)}
+
+  /* кастомная кнопка */
+  .custom{
+    display:grid;grid-template-columns:1fr auto;gap:6px;align-items:start;
+    padding:8px 10px;border-bottom:1px solid var(--line);
+  }
+  .custom .stack{display:grid;gap:5px;min-width:0}
+  .custom input{
+    width:100%;height:26px;border:1px solid var(--line);border-radius:5px;
+    padding:0 7px;font:inherit;font-size:11.5px;background:var(--bg);outline:0;
+  }
+  .custom input:focus{border-color:var(--accent);box-shadow:0 0 0 2px rgba(252,63,29,.14)}
+  .del{
+    appearance:none;width:26px;height:26px;border-radius:5px;cursor:pointer;
+    border:1px solid var(--line);background:var(--bg);color:#d33;font-size:11px;line-height:1;
+    display:grid;place-items:center;flex:0 0 auto;
+  }
+  .del:hover{background:#fff2f2;border-color:#e99}
+  .del:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+
+  .panel-foot{
+    display:flex;gap:5px;align-items:center;flex-wrap:wrap;
+    padding:8px 10px;border-top:1px solid var(--line);background:var(--bg-2);
+  }
+  .btn{
+    appearance:none;height:26px;padding:0 9px;border-radius:5px;cursor:pointer;
+    border:1px solid var(--line);background:var(--bg);
+    font:inherit;font-size:11.5px;color:var(--ink-2);
+  }
+  .btn:hover{border-color:#c9ccd4;color:var(--ink)}
+  .btn:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+  .btn-primary{margin-left:auto;background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
+  .btn-primary:hover{background:#e23714;border-color:#e23714;color:#fff}
+  .btn-icon{width:26px;padding:0;display:grid;place-items:center}
+
+  .page-foot{
+    position:fixed;left:0;right:0;bottom:0;padding:7px 20px;
+    border-top:1px solid var(--line);background:var(--bg-2);
+    font-size:10.5px;color:var(--ink-3);
+  }
+  .page-foot b{color:var(--ink-2)}
+  @media (max-width:960px){
+    .panel{left:12px;right:12px;top:auto;bottom:12px;width:auto;max-height:70vh}
+    .page-foot{display:none}
+  }
+</style>
+</head>
+<body>
+
+<header class="site-head">
+  <div class="head-top">
+    <div class="brand"><span class="brand-dot" aria-hidden="true"></span>Яндекс</div>
+    <form class="searchbox" onsubmit="return false">
+      <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+        <circle cx="7" cy="7" r="4.6"/><path d="M10.6 10.6 14 14" stroke-linecap="round"/>
+      </svg>
+      <input type="text" value="настройки панели вкладок" aria-label="Поисковый запрос">
+      <kbd>Enter</kbd>
+    </form>
+  </div>
+
+  <div class="tabbar" role="tablist" aria-label="Разделы поиска">
+    <button class="tab" role="tab" aria-selected="true">Поиск</button>
+    <button class="tab" role="tab" aria-selected="false">Картинки</button>
+    <button class="tab" role="tab" aria-selected="false">Видео</button>
+    <button class="tab" role="tab" aria-selected="false">Карты</button>
+    <button class="tab" role="tab" aria-selected="false">Новости</button>
+    <button class="tab" role="tab" aria-selected="false">Маркет</button>
+
+    <div class="tab-right">
+      <div class="csst-wrap">
+        <button class="csst-btn" id="csstBtn" title="Настроить вкладки поиска" aria-label="Настроить вкладки поиска" aria-expanded="true">
+          <span class="g" aria-hidden="true"><i></i><i></i><i></i></span>
+        </button>
+        <span class="quick" aria-label="Быстрые действия">
+          <button class="qa" title="Скрыть текущую вкладку" aria-label="Скрыть текущую вкладку">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
+              <path d="M2 8s2.2-4 6-4 6 4 6 4-2.2 4-6 4-6-4-6-4Z"/><path d="m3 13 10-10" stroke-linecap="round"/>
+            </svg>
+          </button>
+          <button class="qa" title="Переименовать вкладку" aria-label="Переименовать вкладку">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
+              <path d="M10.5 2.5 13.5 5.5 5 14H2v-3Z" stroke-linejoin="round"/>
+            </svg>
+          </button>
+          <button class="qa" title="Редирект на другой сервис" aria-label="Редирект на другой сервис">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
+              <path d="M3 8h9" stroke-linecap="round"/><path d="m8.5 4.5 3.5 3.5-3.5 3.5" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </button>
+          <span class="qa-sep" aria-hidden="true"></span>
+          <button class="qa" id="qaMore" title="Все настройки" aria-label="Все настройки">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+              <circle cx="3" cy="8" r="1.4"/><circle cx="8" cy="8" r="1.4"/><circle cx="13" cy="8" r="1.4"/>
+            </svg>
+          </button>
+        </span>
+      </div>
+    </div>
+  </div>
+</header>
+
+<main class="results">
+  <div class="count">Нашлось 47 млн результатов</div>
+  <article class="hit">
+    <div class="url">example.ru › help › search-tabs</div>
+    <h2><a href="#">Настройка панели вкладок: быстрый старт</a></h2>
+    <p>Скрытие, переименование и редирект вкладок на внешние сервисы — что делает каждая опция и как откатить.</p>
+  </article>
+  <article class="hit">
+    <div class="url">example.org › threads › compact-panels</div>
+    <h2><a href="#">Плотные панели настроек: 28 пикселей на строку</a></h2>
+    <p>Когда иконочные действия уместнее подписей и как не потерять обнаруживаемость функций при экономии места.</p>
+  </article>
+  <article class="hit">
+    <div class="url">example.dev › a11y › hover-reveal</div>
+    <h2><a href="#">Раскрытие по наведению: требования доступности</a></h2>
+    <p>Focus-within, клавиатурный доступ и почему действия нельзя прятать только за hover.</p>
+  </article>
+</main>
+
+<aside class="panel" id="panel" role="dialog" aria-modal="false" aria-label="Настройка вкладок">
+  <div class="panel-top">
+    <h2>Настройка вкладок</h2>
+    <span class="panel-engine">Яндекс</span>
+    <button class="icon-btn" id="closeBtn" aria-label="Закрыть">✕</button>
+  </div>
+
+  <div class="filter">
+    <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+      <circle cx="7" cy="7" r="4.6"/><path d="M10.6 10.6 14 14" stroke-linecap="round"/>
+    </svg>
+    <input type="text" id="filterInput" placeholder="Фильтр по названию вкладки" aria-label="Фильтр по названию вкладки">
+  </div>
+
+  <div class="panel-body" id="list">
+    <div class="row" data-name="поиск">
+      <span class="row-name">Поиск</span>
+      <div class="row-actions">
+        <button class="act is-on" title="Скрыть" aria-label="Скрыть вкладку Поиск" aria-pressed="false">
+          <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true">
+            <path d="M2 8s2.2-4 6-4 6 4 6 4-2.2 4-6 4-6-4-6-4Z"/><circle cx="8" cy="8" r="1.6"/>
+          </svg>
+        </button>
+        <button class="act" title="Настроить" aria-label="Настроить вкладку Поиск" aria-expanded="false">
+          <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true">
+            <path d="M4 6.5 8 10.5 12 6.5" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </button>
+      </div>
+      <div class="row-detail">
+        <div class="mini wide">
+          <span>Подпись</span>
+          <input type="text" value="Поиск">
+        </div>
+        <div class="mini wide">
+          <span>Быстрый выбор сервиса</span>
+          <select>
+            <option>— выберите пресет —</option>
+            <option>Яндекс</option>
+            <option>Google</option>
+            <option>↩ Оригинальная вкладка</option>
+          </select>
+        </div>
+        <div class="mini wide">
+          <span>URL редиректа · пусто = оригинал</span>
+          <input type="text" placeholder="https://…?text={query}">
+        </div>
+      </div>
+    </div>
+
+    <div class="row is-hidden" data-name="картинки">
+      <span class="row-name">Картинки</span>
+      <div class="row-actions">
+        <button class="act" title="Скрыть" aria-label="Показать вкладку Картинки" aria-pressed="true">
+          <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true">
+            <path d="M2 8s2.2-4 6-4 6 4 6 4-2.2 4-6 4-6-4-6-4Z"/><path d="m3 13 10-10" stroke-linecap="round"/>
+          </svg>
+        </button>
+        <button class="act" title="Настроить" aria-label="Настроить вкладку Картинки" aria-expanded="false">
+          <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true">
+            <path d="M4 6.5 8 10.5 12 6.5" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </button>
+      </div>
+      <div class="row-detail">
+        <div class="mini wide"><span>Подпись</span><input type="text" value="Картинки"></div>
+      </div>
+    </div>
+
+    <div class="row" data-name="видео">
+      <span class="row-name">Видео</span>
+      <div class="row-actions">
+        <button class="act" title="Скрыть" aria-label="Скрыть вкладку Видео" aria-pressed="false">
+          <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true">
+            <path d="M2 8s2.2-4 6-4 6 4 6 4-2.2 4-6 4-6-4-6-4Z"/><circle cx="8" cy="8" r="1.6"/>
+          </svg>
+        </button>
+        <button class="act" title="Настроить" aria-label="Настроить вкладку Видео" aria-expanded="false">
+          <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true">
+            <path d="M4 6.5 8 10.5 12 6.5" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </button>
+      </div>
+      <div class="row-detail">
+        <div class="mini wide"><span>URL редиректа</span><input type="text" value="https://rutube.ru/search/?query={query}"></div>
+      </div>
+    </div>
+
+    <div class="row" data-name="карты">
+      <span class="row-name">Карты</span>
+      <div class="row-actions">
+        <button class="act" title="Скрыть" aria-label="Скрыть вкладку Карты" aria-pressed="false">
+          <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true">
+            <path d="M2 8s2.2-4 6-4 6 4 6 4-2.2 4-6 4-6-4-6-4Z"/><circle cx="8" cy="8" r="1.6"/>
+          </svg>
+        </button>
+        <button class="act" title="Настроить" aria-label="Настроить вкладку Карты" aria-expanded="false">
+          <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true">
+            <path d="M4 6.5 8 10.5 12 6.5" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </button>
+      </div>
+      <div class="row-detail">
+        <div class="mini wide"><span>Подпись</span><input type="text" value="Карты"></div>
+      </div>
+    </div>
+
+    <div class="row" data-name="маркет">
+      <span class="row-name">Маркет</span>
+      <div class="row-actions">
+        <button class="act" title="Скрыть" aria-label="Скрыть вкладку Маркет" aria-pressed="false">
+          <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true">
+            <path d="M2 8s2.2-4 6-4 6 4 6 4-2.2 4-6 4-6-4-6-4Z"/><circle cx="8" cy="8" r="1.6"/>
+          </svg>
+        </button>
+        <button class="act" title="Настроить" aria-label="Настроить вкладку Маркет" aria-expanded="false">
+          <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true">
+            <path d="M4 6.5 8 10.5 12 6.5" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </button>
+      </div>
+      <div class="row-detail">
+        <div class="mini wide"><span>URL редиректа</span><input type="text" value="https://market.yandex.ru/search?text={query}"></div>
+      </div>
+    </div>
+
+    <div class="custom">
+      <div class="stack">
+        <input type="text" value="GitHub" aria-label="Подпись кастомной кнопки">
+        <input type="text" value="https://github.com/search?q={query}" aria-label="URL кастомной кнопки">
+      </div>
+      <button class="del" aria-label="Удалить кастомную кнопку">✕</button>
+    </div>
+
+    <div class="custom">
+      <div class="stack">
+        <input type="text" value="Перевод" aria-label="Подпись кастомной кнопки">
+        <input type="text" value="https://translate.yandex.ru/?text={query}" aria-label="URL кастомной кнопки">
+      </div>
+      <button class="del" aria-label="Удалить кастомную кнопку">✕</button>
+    </div>
+  </div>
+
+  <div class="panel-foot">
+    <button class="btn btn-icon" title="Экспорт настроек" aria-label="Экспорт настроек">
+      <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true">
+        <path d="M8 10V2m0 0L5 5m3-3 3 3" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M3 10v3h10v-3" stroke-linecap="round"/>
+      </svg>
+    </button>
+    <button class="btn btn-icon" title="Импорт настроек" aria-label="Импорт настроек">
+      <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true">
+        <path d="M8 2v8m0 0L5 7m3 3 3-3" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M3 10v3h10v-3" stroke-linecap="round"/>
+      </svg>
+    </button>
+    <button class="btn" id="addBtn">+ Кнопка</button>
+    <button class="btn">Сброс</button>
+    <button class="btn btn-primary" id="doneBtn">Готово</button>
+  </div>
+</aside>
+
+<footer class="page-foot">
+  <b>Направление 4 — компактный иконочный тулбар.</b>
+  Плюсы: минимум места в строке вкладок, быстрые действия без открытия панели, привычно для опытных пользователей.
+  Минусы: иконки без подписей хуже обнаруживаются, раскрытие по наведению требует focus-within для клавиатуры, действия в 24 px малы для тач-экранов.
+</footer>
+
+<script>
+  var panel = document.getElementById('panel');
+  var btn = document.getElementById('csstBtn');
+  function setOpen(open) {
+    panel.style.display = open ? 'flex' : 'none';
+    btn.setAttribute('aria-expanded', String(open));
+  }
+  document.getElementById('closeBtn').addEventListener('click', function () { setOpen(false); });
+  document.getElementById('doneBtn').addEventListener('click', function () { setOpen(false); });
+  document.getElementById('qaMore').addEventListener('click', function () { setOpen(panel.style.display === 'none'); });
+  btn.addEventListener('click', function () { setOpen(panel.style.display === 'none'); });
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') setOpen(false); });
+
+  // иконочные действия: скрыть / раскрыть настройку строки
+  document.querySelectorAll('.row').forEach(function (row) {
+    var acts = row.querySelectorAll('.act');
+    var hideBtn = acts[0];
+    var moreBtn = acts[1];
+    hideBtn.addEventListener('click', function () {
+      var hidden = row.classList.toggle('is-hidden');
+      hideBtn.setAttribute('aria-pressed', String(hidden));
+    });
+    moreBtn.addEventListener('click', function () {
+      var open = row.classList.toggle('is-open');
+      moreBtn.setAttribute('aria-expanded', String(open));
+    });
+  });
+
+  // фильтр по названию
+  document.getElementById('filterInput').addEventListener('input', function () {
+    var q = this.value.trim().toLowerCase();
+    document.querySelectorAll('.row').forEach(function (row) {
+      var hit = !q || (row.dataset.name || '').indexOf(q) !== -1;
+      row.style.display = hit ? '' : 'none';
+    });
+  });
+
+  function bindDel(el) {
+    el.addEventListener('click', function () { el.closest('.custom').remove(); });
+  }
+  document.querySelectorAll('.del').forEach(bindDel);
+
+  document.getElementById('addBtn').addEventListener('click', function () {
+    var wrap = document.createElement('div');
+    wrap.className = 'custom';
+    wrap.innerHTML =
+      '<div class="stack">' +
+      '<input type="text" placeholder="Название" aria-label="Подпись кастомной кнопки">' +
+      '<input type="text" placeholder="https://…?q={query}" aria-label="URL кастомной кнопки">' +
+      '</div><button class="del" aria-label="Удалить кастомную кнопку">✕</button>';
+    document.getElementById('list').appendChild(wrap);
+    bindDel(wrap.querySelector('.del'));
+  });
+</script>
+</body>
+</html>

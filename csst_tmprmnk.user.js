@@ -1,19 +1,17 @@
 // ==UserScript==
 // @name         Custom Search System Tabs
 // @namespace    https://github.com/diple-df/CSST-tampermonkey-script
-// @version      1.2.1
+// @version      1.2.2
 // @description  Скрывай, переименовывай, перенаправляй и добавляй кнопки-вкладки поиска. Работает в Google, Яндекс, Bing и DuckDuckGo. Поддержка {query} для подстановки запроса.
 // @author       diple_df x claude
 // @match        *://duckduckgo.com/*
 // @match        *://*.duckduckgo.com/*
-// @match        *://www.google.com/*
-// @match        *://www.google.ru/*
 // @match        *://*.bing.com/*
-// @match        *://yandex.ru/*
 // @match        *://*.yandex.ru/*
-// @match        *://yandex.com/*
 // @match        *://*.yandex.com/*
-// @match        *://ya.ru/*
+// @match        *://*.yandex.by/*
+// @match        *://*.yandex.kz/*
+// @match        *://*.yandex.com.tr/*
 // @match        *://*.ya.ru/*
 // @include      /^https?:\/\/(www\.)?google\.[a-z.]+\//
 // @grant        GM_setValue
@@ -36,6 +34,17 @@
         try { return new URL(href, location.origin); } catch (_) { return null; }
     }
 
+    // First element matching any of the selectors, or null. Never throws.
+    function firstMatch(selectors) {
+        for (let i = 0; i < selectors.length; i++) {
+            try {
+                const el = document.querySelector(selectors[i]);
+                if (el) return el;
+            } catch (_) {}
+        }
+        return null;
+    }
+
     const ENGINES = {
         duckduckgo: {
             name: 'DuckDuckGo',
@@ -44,9 +53,14 @@
             storageKey: 'usc_cfg_ddg',
             test: h => /(^|\.)duckduckgo\.com$/i.test(h),
             nav: {
-                container: () => document.querySelector('#react-duckbar nav ul'),
+                container: () => firstMatch([
+                    '#react-duckbar nav ul',
+                    '[data-testid="duckbar"] nav ul',
+                    '#react-duckbar nav',
+                ]),
                 wrap: 'li',
                 linkClass: 'kFFXe30DOpq5j1hbWU1q wZ4JdaHxSAhGy1HoNVja d26Geqs1C__RaCO7MUs2',
+                injectMargin: '0 10px',
             },
             classify(a) {
                 const url = urlOf(a);
@@ -71,7 +85,11 @@
             storageKey: 'usc_cfg_google',
             test: h => /(^|\.)google\.[a-z.]+$/i.test(h),
             nav: {
-                container: () => document.querySelector('div.beZ0tf[role="list"]'),
+                container: () => firstMatch([
+                    'div.beZ0tf[role="list"]',
+                    'div[role="list"][jsname="U4tNTe"]',
+                    '#hdtb-sc div[role="list"]',
+                ]),
                 wrap: 'div',
                 wrapRole: 'listitem',
                 linkClass: 'C6AK7c',
@@ -88,6 +106,7 @@
                 if (tbm === 'vid' || udm === '7') return 'videos';
                 if (tbm === 'nws' || udm === '12') return 'news';
                 if (tbm === 'shop' || udm === '28') return 'shopping';
+                if (udm === '14' || udm === '0' || udm === 'web') return 'web';
                 if (p.has('q') && !tbm && !udm) return 'web';
                 return null;
             },
@@ -100,9 +119,14 @@
             storageKey: 'usc_cfg_bing',
             test: h => /(^|\.)bing\.com$/i.test(h),
             nav: {
-                container: () => document.querySelector('nav.b_scopebar > ul'),
+                container: () => firstMatch([
+                    'nav.b_scopebar > ul',
+                    '.b_scopebar > ul',
+                    'nav[role="navigation"][aria-label="Search Filter"] > ul',
+                ]),
                 wrap: 'li',
                 linkClass: '',
+                injectMargin: '0 8px',
             },
             classify(a) {
                 const li = a.closest && a.closest('li[id^="b-scopeListItem-"]');
@@ -136,7 +160,11 @@
             storageKey: 'usc_cfg_yandex',
             test: h => /(^|\.)yandex\.(ru|com|by|kz|ua|com\.tr)$/i.test(h) || /(^|\.)ya\.ru$/i.test(h),
             nav: {
-                container: () => document.querySelector('nav.HeaderNav'),
+                container: () => firstMatch([
+                    'nav.HeaderNav',
+                    '.HeaderNav',
+                    'nav[class*="HeaderNav"]',
+                ]),
                 wrap: null,
                 linkClass: 'HeaderNav-Tab HeaderNav-Item',
             },
@@ -271,7 +299,11 @@
     };
 
     const CLOSE = { en:'Close', ru:'Закрыть', uk:'Закрити', de:'Schließen', fr:'Fermer', es:'Cerrar', pt:'Fechar', tr:'Kapat', it:'Chiudi', pl:'Zamknij' };
-    Object.keys(I18N).forEach(k => { I18N[k].close = CLOSE[k] || 'Close'; });
+    const REMOVE_BTN = { en:'Remove CSST button', ru:'Убрать кнопку CSST', uk:'Прибрати кнопку CSST', de:'CSST-Schaltfläche entfernen', fr:'Supprimer le bouton CSST', es:'Quitar botón CSST', pt:'Remover botão CSST', tr:'CSST düğmesini kaldır', it:'Rimuovi pulsante CSST', pl:'Usuń przycisk CSST' };
+    Object.keys(I18N).forEach(k => {
+        I18N[k].close = CLOSE[k] || 'Close';
+        I18N[k].removeButton = REMOVE_BTN[k] || REMOVE_BTN.en;
+    });
 
     const USER_LANG = I18N[detectLang()] ? detectLang() : 'en';
     function L() { return I18N[USER_LANG] || I18N.en; }
@@ -437,8 +469,9 @@
     }
 
     function isOwnEl(el) {
-        return el.id === 'usc-gear-btn' || el.hasAttribute('data-usc-custom')
-            || el.hasAttribute('data-usc-inject-wrap') || !!el.closest('#usc-panel');
+        return el.id === 'usc-gear-btn' || el.id === 'usc-ui-host' || el.hasAttribute('data-usc-custom')
+            || el.hasAttribute('data-usc-inject-wrap') || !!el.closest('#usc-panel')
+            || !!el.closest('#usc-ui-host');
     }
 
     function classifyEl(el) {
@@ -554,6 +587,7 @@
     let isApplying = false;
 
     function applyConfig() {
+        if (_disabled) return;
         if (isApplying) return;
         isApplying = true;
         try { _applyConfig(); } finally { isApplying = false; }
@@ -723,8 +757,37 @@
     }
 
     // ─── ПАНЕЛЬ НАСТРОЕК ──────────────────────────────────────────────────────
+    //
+    // Панель живёт в Shadow DOM отдельного хоста. Это защищает её от
+    // страничных скриптов: например, Bing ставит MutationObserver («AdPrevention»),
+    // который удаляет любые добавленные <div>/<li> с непустым class, похожим
+    // на рекламный. Без изоляции панель открывалась пустой, а в тёмной теме
+    // удалялась целиком.
+
+    let uiRoot = null;   // ShadowRoot, пока панель открыта
+    let _escHandler = null;
+
+    function uiEl(id) {
+        if (uiRoot) {
+            const el = uiRoot.getElementById ? uiRoot.getElementById(id) : uiRoot.querySelector('#' + id);
+            if (el) return el;
+        }
+        return document.getElementById(id);
+    }
+
+    function uiAll(selector) {
+        return uiRoot ? [...uiRoot.querySelectorAll(selector)] : [...document.querySelectorAll(selector)];
+    }
 
     function openPanel() {
+        // Уже открыта — второй панели не создаём.
+        const existing = document.getElementById('usc-ui-host');
+        if (existing && existing.isConnected) {
+            const p = existing.shadowRoot && existing.shadowRoot.getElementById('usc-panel');
+            if (p && !p.classList.contains('usc-closing')) return;
+            existing.remove();
+            uiRoot = null;
+        }
         if (document.getElementById('usc-panel')) return;
 
         const cfg = loadConfig();
@@ -733,23 +796,59 @@
         panel.id = 'usc-panel';
         if (isDarkTheme()) panel.classList.add('usc-dark');
         panel.innerHTML = buildPanelHTML();
-        document.body.appendChild(panel);
+
+        const host = document.createElement('csst-ui');
+        host.id = 'usc-ui-host';
+        host.style.cssText = 'position:fixed;inset:0;z-index:2147483646;';
+
+        let root = null;
+        try { root = host.attachShadow({ mode: 'open' }); } catch (_) { root = null; }
+
+        if (root) {
+            const style = document.createElement('style');
+            style.textContent = panelCss();
+            root.appendChild(style);
+            root.appendChild(panel);
+            uiRoot = root;
+        } else {
+            uiRoot = null;
+            document.body.appendChild(panel);
+        }
+
+        document.body.appendChild(host);
 
         renderTabRows(cfg, detectTabs());
         renderCustomRows(cfg);
         bindPanelEvents(cfg);
     }
 
+    function closePanel(panel) {
+        if (panel && panel.classList.contains('usc-closing')) return;
+        if (panel) panel.classList.add('usc-closing');
+        if (_escHandler) {
+            document.removeEventListener('keydown', _escHandler, true);
+            _escHandler = null;
+        }
+        setTimeout(() => {
+            const host = uiRoot && uiRoot.host ? uiRoot.host : document.getElementById('usc-ui-host');
+            if (panel) panel.remove();
+            const p = document.getElementById('usc-panel');
+            if (p) p.remove();
+            if (host) host.remove();
+            uiRoot = null;
+        }, 180);
+    }
+
     function buildPanelHTML() {
         return `
         <div class="usc-backdrop"></div>
-        <div class="usc-modal">
+        <div class="usc-modal" role="dialog" aria-modal="true" aria-label="${escHtml(t('title'))}">
             <div class="usc-head">
                 <div class="usc-head-inner">
                     <span class="usc-head-icon"><span></span><span></span><span></span></span>
                     <span class="usc-title">${escHtml(t('title'))}</span>
                 </div>
-                <button class="usc-close" id="usc-close">✕</button>
+                <button class="usc-close" id="usc-close" type="button" title="${escHtml(t('close'))}" aria-label="${escHtml(t('close'))}">✕</button>
             </div>
             <div class="usc-body">
                 <div class="usc-section-title">${escHtml(t('standard'))}</div>
@@ -759,19 +858,20 @@
                     <span class="usc-hint">${escHtml(t('queryHint'))}</span>
                 </div>
                 <div id="usc-custom-rows"></div>
-                <button class="usc-btn usc-btn-add" id="usc-add-custom">${escHtml(t('add'))}</button>
+                <button class="usc-btn usc-btn-add" id="usc-add-custom" type="button">${escHtml(t('add'))}</button>
             </div>
             <div class="usc-foot">
-                <button class="usc-btn" id="usc-export">Export</button>
-                <button class="usc-btn" id="usc-import">Import</button>
-                <button class="usc-btn usc-btn-reset" id="usc-reset">${escHtml(t('reset'))}</button>
-                <button class="usc-btn usc-btn-save" id="usc-close-2">${escHtml(t('close'))}</button>
+                <button class="usc-btn" id="usc-export" type="button">Export</button>
+                <button class="usc-btn" id="usc-import" type="button">Import</button>
+                <button class="usc-btn usc-btn-reset" id="usc-reset" type="button">${escHtml(t('reset'))}</button>
+                <button class="usc-btn usc-btn-save" id="usc-close-2" type="button">${escHtml(t('close'))}</button>
             </div>
         </div>`;
     }
 
     function renderTabRows(cfg, detected) {
-        const container = document.getElementById('usc-tab-rows');
+        const container = uiEl('usc-tab-rows');
+        if (!container) return;
         container.innerHTML = '';
 
         let list = (detected && detected.length)
@@ -795,7 +895,7 @@
             const presetsEl = presets.length ? `
                 <div class="usc-field">
                     <label>${escHtml(t('presetField'))}</label>
-                    <select class="usc-preset" data-key="${key}">
+                    <select class="usc-preset" data-key="${escHtml(key)}">
                         <option value="">${escHtml(t('presetPlaceholder'))}</option>
                         ${presets.map(p => `<option value="${escHtml(p.url)}">${escHtml(p.name)}</option>`).join('')}
                         <option value="__default__">${escHtml(t('original'))}</option>
@@ -806,13 +906,14 @@
             row.className = 'usc-tab-row' + (tab.hidden ? ' usc-hidden-row' : '');
             row.dataset.key    = key;
             row.dataset.native = nativeLabel || '';
+            const k = escHtml(key);
             row.innerHTML = `
                 <div class="usc-tab-header">
                     <span class="usc-tab-name">${escHtml(display)}</span>
                     <label class="usc-hide-label" title="${escHtml(t('hide'))}">
                         <span class="usc-hide-text">${escHtml(t('hide'))}</span>
                         <span class="usc-switch">
-                            <input type="checkbox" class="usc-hide-cb" data-key="${key}" ${tab.hidden ? 'checked' : ''}>
+                            <input type="checkbox" class="usc-hide-cb" data-key="${k}" ${tab.hidden ? 'checked' : ''}>
                             <span class="usc-switch-sl"></span>
                         </span>
                     </label>
@@ -820,17 +921,18 @@
                 <div class="usc-tab-fields">
                     <div class="usc-field">
                         <label>${escHtml(t('labelField'))}</label>
-                        <input type="text" class="usc-label-inp" data-key="${key}" value="${escHtml(display)}" placeholder="${escHtml(t('namePlaceholder'))}">
+                        <input type="text" class="usc-label-inp" data-key="${k}" value="${escHtml(display)}" placeholder="${escHtml(t('namePlaceholder'))}">
                     </div>
                     ${presetsEl}
                     <div class="usc-field">
                         <label>${escHtml(t('redirectField'))} <span class="usc-hint">${escHtml(t('redirectHint'))}</span></label>
-                        <input type="text" class="usc-url-inp" data-key="${key}" value="${escHtml(tab.redirectUrl || '')}" placeholder="${escHtml(t('urlPlaceholder'))}">
+                        <input type="text" class="usc-url-inp" data-key="${k}" value="${escHtml(tab.redirectUrl || '')}" placeholder="${escHtml(t('urlPlaceholder'))}">
                     </div>
                 </div>`;
             container.appendChild(row);
 
             const cb = row.querySelector('.usc-hide-cb');
+            if (!cb) return;
             cb.addEventListener('change', () => {
                 if (cb.checked) {
                     row.classList.add('usc-hidden-row');
@@ -842,7 +944,10 @@
 
         container.querySelectorAll('.usc-preset').forEach(sel => {
             sel.addEventListener('change', () => {
-                const inp = container.querySelector(`.usc-url-inp[data-key="${sel.dataset.key}"]`);
+                const key = sel.dataset.key || '';
+                const esc = (window.CSS && CSS.escape) ? CSS.escape(key) : key.replace(/"/g, '\\"');
+                const inp = container.querySelector(`.usc-url-inp[data-key="${esc}"]`);
+                if (!inp) return;
                 if (sel.value === '__default__') inp.value = '';
                 else if (sel.value)              inp.value = sel.value;
                 sel.value = '';
@@ -853,13 +958,15 @@
     let _customCounter = 1;
 
     function renderCustomRows(cfg) {
-        const container = document.getElementById('usc-custom-rows');
+        const container = uiEl('usc-custom-rows');
+        if (!container) return;
         container.innerHTML = '';
         (cfg.customTabs || []).forEach(ct => appendCustomRow(ct.label, ct.url, ct.id));
     }
 
     function appendCustomRow(label = '', url = '', id = null) {
-        const container = document.getElementById('usc-custom-rows');
+        const container = uiEl('usc-custom-rows');
+        if (!container) return;
         const rowId = id || ('custom_' + (typeof performance !== 'undefined' ? Math.floor(performance.now()) : _customCounter) + '_' + (_customCounter++));
 
         const row = document.createElement('div');
@@ -892,32 +999,36 @@
     }
 
     function bindPanelEvents(cfg) {
-        const panel = document.getElementById('usc-panel');
-        const close = () => {
-            panel.classList.add('usc-closing');
-            setTimeout(() => panel.remove(), 180);
-        };
+        const panel = uiEl('usc-panel');
+        if (!panel) return;
+        const close = () => closePanel(panel);
 
-        panel.querySelector('.usc-backdrop').onclick = close;
-        document.getElementById('usc-close').onclick   = close;
-        document.getElementById('usc-close-2').onclick = close;
-        document.getElementById('usc-add-custom').onclick = () => {
+        const backdrop = panel.querySelector('.usc-backdrop');
+        if (backdrop) backdrop.onclick = close;
+        const btnClose = uiEl('usc-close');
+        if (btnClose) btnClose.onclick = close;
+        const btnClose2 = uiEl('usc-close-2');
+        if (btnClose2) btnClose2.onclick = close;
+        const addBtn = uiEl('usc-add-custom');
+        if (addBtn) addBtn.onclick = () => {
             appendCustomRow();
-            const rows = panel.querySelectorAll('.usc-custom-row');
+            const rows = uiRoot ? uiRoot.querySelectorAll('.usc-custom-row') : panel.querySelectorAll('.usc-custom-row');
             if (rows.length) {
                 const lastInp = rows[rows.length - 1].querySelector('.usc-ci-label');
                 if (lastInp) lastInp.focus();
             }
         };
 
-        document.getElementById('usc-reset').onclick = () => {
+        const resetBtn = uiEl('usc-reset');
+        if (resetBtn) resetBtn.onclick = () => {
             if (confirm(t('resetConfirm'))) {
                 saveConfig(deepClone(DEFAULT_CONFIG));
                 location.reload();
             }
         };
 
-        document.getElementById('usc-export').onclick = () => {
+        const exportBtn = uiEl('usc-export');
+        if (exportBtn) exportBtn.onclick = () => {
             try {
                 const data = JSON.stringify(loadConfig(), null, 2);
                 const blob = new Blob([data], { type: 'application/json' });
@@ -932,7 +1043,8 @@
             } catch (e) {}
         };
 
-        document.getElementById('usc-import').onclick = () => {
+        const importBtn = uiEl('usc-import');
+        if (importBtn) importBtn.onclick = () => {
             const input = document.createElement('input');
             input.type = 'file';
             input.accept = 'application/json';
@@ -955,28 +1067,47 @@
         };
 
         const body = panel.querySelector('.usc-body');
+        if (!body) return;
         body.addEventListener('input',  () => liveSave(cfg));
         body.addEventListener('change', () => liveSave(cfg));
         body.addEventListener('click',  e => { if (e.target.closest('.usc-del-custom')) liveSave(cfg); });
+
+        panel.addEventListener('keydown', e => {
+            if (e.key === 'Escape') close();
+        });
+
+        // Escape должен работать и без фокуса внутри панели.
+        _escHandler = e => {
+            if (e.key !== 'Escape') return;
+            close();
+        };
+        document.addEventListener('keydown', _escHandler, true);
     }
 
     function collectAndSave(cfg) {
-        document.querySelectorAll('.usc-tab-row').forEach(row => {
+        uiAll('.usc-tab-row').forEach(row => {
             const key = row.dataset.key;
             if (!key) return;
             if (!cfg.tabs[key]) cfg.tabs[key] = { hidden: false, label: key, redirectUrl: null };
             const canonical = DEFAULT_CONFIG.tabs[key] ? DEFAULT_CONFIG.tabs[key].label : key;
             const native    = row.dataset.native || '';
-            const val       = row.querySelector('.usc-label-inp').value.trim();
+            const labelInp  = row.querySelector('.usc-label-inp');
+            const hideCb    = row.querySelector('.usc-hide-cb');
+            const urlInp    = row.querySelector('.usc-url-inp');
+            if (!labelInp || !hideCb || !urlInp) return;
+            const val = labelInp.value.trim();
 
-            cfg.tabs[key].hidden = row.querySelector('.usc-hide-cb').checked;
+            cfg.tabs[key].hidden = hideCb.checked;
             cfg.tabs[key].label = (val && val !== native) ? val : canonical;
-            cfg.tabs[key].redirectUrl = row.querySelector('.usc-url-inp').value.trim() || null;
+            cfg.tabs[key].redirectUrl = urlInp.value.trim() || null;
         });
         cfg.customTabs = [];
-        document.querySelectorAll('.usc-custom-row').forEach(row => {
-            const label = row.querySelector('.usc-ci-label').value.trim();
-            const url   = row.querySelector('.usc-ci-url').value.trim();
+        uiAll('.usc-custom-row').forEach(row => {
+            const labelInp = row.querySelector('.usc-ci-label');
+            const urlInp   = row.querySelector('.usc-ci-url');
+            if (!labelInp || !urlInp) return;
+            const label = labelInp.value.trim();
+            const url   = urlInp.value.trim();
             if (label && url) cfg.customTabs.push({ id: row.dataset.id, label, url });
         });
         saveConfig(cfg);
@@ -997,7 +1128,9 @@
         return `rgba(${r},${g},${b},${alpha})`;
     }
 
-    GM_addStyle(`
+    // Стили для элементов внутри страницы (кнопка ≡ и обёртки кастомных кнопок).
+    function navCss() {
+        return `
         /* ── Кнопка в навигационной строке ── */
         #usc-gear-btn {
             display: inline-flex;
@@ -1012,9 +1145,15 @@
             vertical-align: middle;
             flex-shrink: 0;
             border-radius: 6px;
+            line-height: 0;
+            color: ${ACCENT};
+            -webkit-appearance: none;
+            appearance: none;
         }
+        #usc-gear-btn:focus-visible { outline: 2px solid ${accentRgba(0.5)}; outline-offset: 1px; }
         #usc-gear-btn:hover { background: ${accentRgba(0.12)}; }
-        [data-usc-inject-wrap] { list-style: none; display: inline-flex; align-items: center; }
+        [data-usc-inject-wrap] { list-style: none; display: inline-flex; align-items: center; margin: 0; }
+        ${ENGINE.nav && ENGINE.nav.injectMargin ? `[data-usc-inject-wrap] { margin: ${ENGINE.nav.injectMargin}; }` : ''}
         .usc-ham { display: flex; flex-direction: column; gap: 3px; pointer-events: none; }
         .usc-ham span {
             display: block; width: 15px; height: 2px;
@@ -1024,12 +1163,38 @@
         #usc-gear-btn:hover .usc-ham span:nth-child(2) { width: 10px; }
         #usc-gear-btn:hover .usc-ham span:nth-child(3) { width: 13px; }
 
-        /* ── Оверлей ── */
-        #usc-panel {
-            position: fixed; inset: 0; z-index: 2147483646;
-            font-family: -apple-system, system-ui, "Segoe UI", sans-serif;
-            font-size: 12px;
+        /* ── Кастомные кнопки в строке вкладок ── */
+        [data-usc-inject-wrap] > a[data-usc-custom],
+        a[data-usc-custom] {
+            display: inline-flex;
+            align-items: center;
+            text-decoration: none;
+            white-space: nowrap;
+            -webkit-appearance: none;
+            appearance: none;
         }
+        `;
+    }
+
+    GM_addStyle(navCss());
+
+    // Стили панели: живут в Shadow DOM, поэтому не конфликтуют со страницей.
+    function panelCss() {
+        return `
+        /* ── Оверлей ── */
+        :host { contain: layout style; }
+        #usc-panel {
+            position: absolute; inset: 0; z-index: 2147483646;
+            font-family: -apple-system, system-ui, "Segoe UI", Roboto, sans-serif;
+            font-size: 12px;
+            line-height: 1.35;
+            color: #222;
+            letter-spacing: normal;
+            text-align: left;
+            direction: ltr;
+            -webkit-font-smoothing: antialiased;
+        }
+        #usc-panel *, #usc-panel *::before, #usc-panel *::after { box-sizing: border-box; }
         .usc-backdrop {
             position: absolute; inset: 0;
             background: transparent;
@@ -1081,20 +1246,25 @@
             letter-spacing: .06em; color: #777; margin-bottom: 5px;
             display: flex; align-items: center; justify-content: space-between;
         }
-        .usc-hint { font-size: 9.5px; color: #999; font-weight: 400; text-transform: none; letter-spacing: 0; }
-        .usc-empty { font-size: 12px; color: #888; padding: 6px 2px; }
+        .usc-hint { font-size: 9.5px; color: #747474; font-weight: 400; text-transform: none; letter-spacing: 0; }
+        .usc-empty { font-size: 12px; color: #6f6f6f; padding: 6px 2px; }
 
         /* ── Строка вкладки ── */
         .usc-tab-row {
             background: #fff; border: 1px solid #e0e0e0;
             border-radius: 5px; padding: 5px 8px; margin-bottom: 4px;
-            transition: all .12s ease;
+            transition: border-color .12s ease, background .12s ease;
         }
-        .usc-tab-header { display: flex; align-items: center; justify-content: space-between; }
-        .usc-tab-name { font-weight: 600; font-size: 12px; color: #222; }
+        .usc-tab-row:hover { border-color: #cfcfcf; }
+        .usc-tab-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 20px; }
+        .usc-tab-name {
+            font-weight: 600; font-size: 12px; color: #222;
+            min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+        }
         .usc-hide-label {
             display: flex; align-items: center; gap: 5px;
-            font-size: 10.5px; color: #777; cursor: pointer; user-select: none;
+            font-size: 10.5px; color: #5f5f5f; cursor: pointer; user-select: none;
+            flex-shrink: 0;
         }
         .usc-hide-text { text-transform: uppercase; letter-spacing: .03em; font-weight: 600; font-size: 9.5px; }
         
@@ -1108,7 +1278,7 @@
             display: none !important;
         }
         .usc-tab-row.usc-hidden-row .usc-tab-name {
-            color: #888;
+            color: #6f6f6f;
             text-decoration: line-through;
         }
 
@@ -1128,12 +1298,12 @@
         .usc-switch input:checked + .usc-switch-sl::before { transform: translateX(11px); }
 
         .usc-tab-fields { display: flex; flex-direction: column; gap: 4px; margin-top: 5px; padding-top: 5px; border-top: 1px solid #f2f2f2; }
-        .usc-field { display: flex; flex-direction: column; gap: 1.5px; }
-        .usc-field > label { font-size: 9px; font-weight: 600; color: #777; text-transform: uppercase; letter-spacing: .03em; }
+        .usc-field { display: flex; flex-direction: column; gap: 1.5px; min-width: 0; }
+        .usc-field > label { font-size: 9px; font-weight: 600; color: #6f6f6f; text-transform: uppercase; letter-spacing: .03em; }
         .usc-field input[type="text"], .usc-field select {
-            padding: 3.5px 6px; border: 1px solid #d5d5d5; border-radius: 4px;
-            font-size: 11.5px; background: #fff; outline: none; color: #222;
-            transition: border-color .12s, box-shadow .12s;
+            display: block; width: 100%; padding: 3.5px 6px; border: 1px solid #d5d5d5; border-radius: 4px;
+            font-family: inherit; font-size: 11.5px; background: #fff; outline: none; color: #222;
+            transition: border-color .12s, box-shadow .12s; min-width: 0;
         }
         .usc-field input[type="text"]:focus, .usc-field select:focus {
             border-color: ${ACCENT}; box-shadow: 0 0 0 2px ${accentRgba(0.15)};
@@ -1143,13 +1313,13 @@
         .usc-custom-row {
             display: flex; gap: 4px; margin-bottom: 4px; align-items: center;
             background: #fff; border: 1px solid #e0e0e0; border-radius: 5px;
-            padding: 4px 6px; transition: all .12s ease;
+            padding: 4px 6px; transition: border-color .12s ease;
         }
         .usc-custom-inputs { display: flex; flex-direction: column; gap: 3px; flex: 1; min-width: 0; }
         .usc-custom-row input {
-            width: 100%; padding: 3.5px 6px; border: 1px solid #d5d5d5; border-radius: 4px;
-            font-size: 11.5px; outline: none; background: #fff; color: #222;
-            transition: border-color .12s, box-shadow .12s;
+            display: block; width: 100%; padding: 3.5px 6px; border: 1px solid #d5d5d5; border-radius: 4px;
+            font-family: inherit; font-size: 11.5px; outline: none; background: #fff; color: #222;
+            transition: border-color .12s, box-shadow .12s; min-width: 0;
         }
         .usc-custom-row input:focus {
             border-color: ${ACCENT}; box-shadow: 0 0 0 2px ${accentRgba(0.15)};
@@ -1166,15 +1336,16 @@
         /* ── Кнопки ── */
         .usc-btn {
             padding: 5px 12px; border-radius: 4px; border: 1px solid #d5d5d5;
-            font-size: 11px; font-weight: 500; cursor: pointer;
+            font-family: inherit; font-size: 11px; font-weight: 500; cursor: pointer;
             background: #f0f0f0; color: #444;
-            transition: background .12s, border-color .12s; line-height: 1.2;
+            transition: background .12s, border-color .12s, color .12s; line-height: 1.2;
             white-space: nowrap;
             min-width: 60px;
         }
+        .usc-btn:focus-visible { outline: 2px solid ${accentRgba(0.5)}; outline-offset: 1px; }
         .usc-btn:hover { background: #e5e5e5; border-color: #bcbcbc; }
         .usc-btn-save { background: ${ACCENT}; color: #fff; border-color: ${ACCENT}; }
-        .usc-btn-save:hover { filter: brightness(.92); }
+        .usc-btn-save:hover { background: ${ACCENT}; filter: brightness(.92); }
         .usc-btn-add {
             display: block; width: 100%; margin-top: 4px;
             background: #fff; color: ${ACCENT}; border-color: ${ACCENT};
@@ -1183,9 +1354,10 @@
         .usc-btn-del {
             background: #fff; color: #d9534f; border-color: #e8c6c6;
             flex-shrink: 0; padding: 5px 8px; border-radius: 4px; font-size: 11.5px;
+            min-width: 0;
         }
         .usc-btn-del:hover { background: #fff5f5; border-color: #d9534f; }
-        .usc-btn-reset { background: #f0f0f0; color: #767676; border-color: #d5d5d5; }
+        .usc-btn-reset { background: #f0f0f0; color: #5f5f5f; border-color: #d5d5d5; }
         .usc-btn-reset:hover { background: #e5e5e5; }
 
         /* ════════ ТЁМНАЯ ТЕМА ════════ */
@@ -1196,16 +1368,18 @@
         #usc-panel.usc-dark .usc-close { color: #888; }
         #usc-panel.usc-dark .usc-close:hover { background: #242424; color: #f0f0f0; }
         #usc-panel.usc-dark .usc-body { background: #101010; }
-        #usc-panel.usc-dark .usc-section-title { color: #888; }
-        #usc-panel.usc-dark .usc-hint { color: #555; }
+        #usc-panel.usc-dark .usc-section-title { color: #8f8f8f; }
+        #usc-panel.usc-dark .usc-hint { color: #8a8a8a; }
+        #usc-panel.usc-dark .usc-empty { color: #8a8a8a; }
         #usc-panel.usc-dark .usc-tab-row { background: #1a1a1a; border-color: #282828; }
+        #usc-panel.usc-dark .usc-tab-row:hover { border-color: #3a3a3a; }
         #usc-panel.usc-dark .usc-tab-row.usc-hidden-row { background: #141414; border-color: #202020; }
-        #usc-panel.usc-dark .usc-tab-row.usc-hidden-row .usc-tab-name { color: #777; }
+        #usc-panel.usc-dark .usc-tab-row.usc-hidden-row .usc-tab-name { color: #7d7d7d; }
         #usc-panel.usc-dark .usc-tab-name { color: #f0f0f0; }
-        #usc-panel.usc-dark .usc-hide-label { color: #777; }
+        #usc-panel.usc-dark .usc-hide-label { color: #9a9a9a; }
         #usc-panel.usc-dark .usc-switch-sl { background: #333; }
         #usc-panel.usc-dark .usc-tab-fields { border-top-color: #242424; }
-        #usc-panel.usc-dark .usc-field > label { color: #777; }
+        #usc-panel.usc-dark .usc-field > label { color: #8f8f8f; }
         #usc-panel.usc-dark .usc-field input[type="text"],
         #usc-panel.usc-dark .usc-field select {
             background: #222222; border-color: #313131; color: #e8e8e8;
@@ -1229,12 +1403,15 @@
         #usc-panel.usc-dark .usc-btn-del:hover { background: #2e1a1a; border-color: #9b3030; }
         #usc-panel.usc-dark .usc-btn-reset { background: #222; color: #888; border-color: #313131; }
         #usc-panel.usc-dark .usc-btn-reset:hover { background: #2a2a2a; }
-    `);
+        `;
+    }
 
     // ─── ИНИЦИАЛИЗАЦИЯ И SPA-ПОДДЕРЖКА ───────────────────────────────────────
 
     let _applyTimer = null;
+    let _disabled = false;
     function scheduleApply() {
+        if (_disabled) return;
         clearTimeout(_applyTimer);
         _applyTimer = setTimeout(applyConfig, 350);
     }
@@ -1259,21 +1436,53 @@
     });
 
     let _lastUrl = location.href;
-    setInterval(() => {
+    let _urlTimer = setInterval(() => {
+        if (_disabled) return;
         if (location.href !== _lastUrl) {
             _lastUrl = location.href;
             setTimeout(applyConfig, 600);
         }
     }, 600);
 
+    // Сторож: SPA-перерисовка может снести наши узлы, не задев навигационные
+    // ссылки (тогда MutationObserver молчит). Дешёвая проверка раз в секунду.
+    let _watchdog = setInterval(() => {
+        if (_disabled) return;
+        if (!_injectedAlive()) applyConfig();
+    }, 1000);
+
+    function _injectedAlive() {
+        const gear = document.getElementById('usc-gear-btn');
+        return !!(gear && gear.isConnected);
+    }
+
+    function removeInjected() {
+        _disabled = true;
+        clearInterval(_urlTimer);
+        clearInterval(_watchdog);
+        try { observer.disconnect(); } catch (_) {}
+        document.querySelectorAll('[data-usc-custom]').forEach(el => {
+            const wrap = el.closest('[data-usc-inject-wrap]');
+            (wrap || el).remove();
+        });
+        const gear = document.getElementById('usc-gear-btn');
+        if (gear) (gear.closest('[data-usc-inject-wrap]') || gear).remove();
+        const host = document.getElementById('usc-ui-host');
+        if (host) host.remove();
+        const panel = document.getElementById('usc-panel');
+        if (panel) panel.remove();
+        uiRoot = null;
+    }
+
     if (typeof GM_registerMenuCommand === 'function') {
         GM_registerMenuCommand('⚙ ' + t('gearTitle'), openPanel);
+        GM_registerMenuCommand('✕ ' + t('removeButton'), removeInjected);
     }
 
     function init() {
         applyConfig();
         if (document.body) {
-            observer.observe(document.body, { childList: true, subtree: true });
+            try { observer.observe(document.body, { childList: true, subtree: true }); } catch (_) {}
         }
     }
 

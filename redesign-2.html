@@ -1,0 +1,526 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CSST — редизайн 2: матовое стекло</title>
+<!--
+  НАПРАВЛЕНИЕ 2 из 5 — «Матовое стекло».
+  Идея: панель и кнопка — полупрозрачные слои с backdrop-filter: blur + saturate.
+  Светлая «стеклянная» плёнка, крупные скругления (14–18px), мягкие цветные тени,
+  акцент — фирменный цвет поисковика. Группировка карточками с внутренними бликами.
+-->
+<style>
+  :root{
+    --accent:#4285f4;
+    --accent-soft:rgba(66,133,244,.12);
+    --ink:#1f2430;
+    --ink-2:#5b6472;
+    --ink-3:#8b95a5;
+    --glass:rgba(255,255,255,.62);
+    --glass-strong:rgba(255,255,255,.82);
+    --glass-border:rgba(255,255,255,.75);
+    --card:rgba(255,255,255,.55);
+    --shadow-lg:0 24px 60px -18px rgba(31,36,48,.32);
+    --shadow-sm:0 2px 10px -2px rgba(31,36,48,.14);
+    --r-lg:18px;
+    --r-md:12px;
+    --r-sm:9px;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0;min-height:100%}
+  body{
+    font:13.5px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
+    color:var(--ink);
+    -webkit-font-smoothing:antialiased;
+    /* цветной «фон поисковика», на котором видно стекло */
+    background:
+      radial-gradient(900px 600px at 12% -8%, #dbe7ff 0%, rgba(219,231,255,0) 62%),
+      radial-gradient(760px 520px at 88% 4%, #ffe4d6 0%, rgba(255,228,214,0) 60%),
+      radial-gradient(700px 700px at 62% 96%, #d9f6ea 0%, rgba(217,246,234,0) 64%),
+      linear-gradient(180deg,#f7f9fd 0%,#eef2fa 100%);
+    background-attachment:fixed;
+    /* место под открытую панель — кнопка CSST остаётся видимой */
+    padding-right:400px;
+  }
+  @media (max-width:960px){
+    body{padding-right:0}
+  }
+  .label{
+    font-size:10px;letter-spacing:.07em;text-transform:uppercase;
+    color:var(--ink-3);font-weight:700;
+  }
+
+  /* ── Шапка ── */
+  .site-head{
+    max-width:1120px;margin:0 auto;padding:26px 24px 0;
+  }
+  .head-row{display:flex;align-items:center;gap:18px}
+  .brand{display:flex;align-items:center;gap:9px;font-size:19px;font-weight:650;letter-spacing:-.02em;flex:0 0 auto}
+  .dots{display:grid;grid-template-columns:repeat(2,7px);gap:3px}
+  .dots i{width:7px;height:7px;border-radius:50%}
+  .dots i:nth-child(1){background:#4285f4}
+  .dots i:nth-child(2){background:#ea4335}
+  .dots i:nth-child(3){background:#fbbc05}
+  .dots i:nth-child(4){background:#34a853}
+
+  .searchbox{
+    flex:1 1 auto;max-width:600px;height:44px;
+    display:flex;align-items:center;gap:10px;padding:0 18px;
+    border-radius:999px;border:1px solid var(--glass-border);
+    background:var(--glass-strong);
+    -webkit-backdrop-filter:blur(18px) saturate(180%);
+    backdrop-filter:blur(18px) saturate(180%);
+    box-shadow:var(--shadow-sm), inset 0 1px 0 rgba(255,255,255,.9);
+  }
+  .searchbox svg{flex:0 0 auto;color:var(--ink-3)}
+  .searchbox input{
+    flex:1 1 auto;border:0;outline:0;font:inherit;font-size:14px;
+    background:transparent;color:var(--ink);min-width:0;
+  }
+  .searchbox input::placeholder{color:var(--ink-3)}
+  .mic{
+    flex:0 0 auto;width:26px;height:26px;border-radius:50%;border:0;cursor:pointer;
+    background:var(--accent-soft);color:var(--accent);display:grid;place-items:center;
+  }
+
+  /* ── Вкладки ── */
+  .tabbar{
+    display:flex;align-items:center;gap:4px;margin-top:18px;
+    padding:5px;border-radius:999px;
+    background:rgba(255,255,255,.42);
+    border:1px solid rgba(255,255,255,.6);
+    -webkit-backdrop-filter:blur(12px) saturate(160%);
+    backdrop-filter:blur(12px) saturate(160%);
+    width:max-content;max-width:100%;
+  }
+  .tab{
+    appearance:none;border:0;background:transparent;cursor:pointer;
+    font:inherit;font-size:13px;color:var(--ink-2);
+    padding:7px 14px;border-radius:999px;white-space:nowrap;
+    transition:background .16s ease,color .16s ease,box-shadow .16s ease;
+  }
+  .tab:hover{background:rgba(255,255,255,.7);color:var(--ink)}
+  .tab[aria-selected="true"]{
+    background:#fff;color:var(--accent);font-weight:600;
+    box-shadow:0 2px 8px -2px rgba(66,133,244,.4), inset 0 0 0 1px rgba(66,133,244,.14);
+  }
+  .tab:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+  /* ── Кнопка CSST ── */
+  .csst-btn{
+    appearance:none;cursor:pointer;margin-left:6px;
+    width:34px;height:34px;border-radius:50%;
+    border:1px solid var(--glass-border);
+    background:var(--glass-strong);
+    -webkit-backdrop-filter:blur(14px) saturate(170%);
+    backdrop-filter:blur(14px) saturate(170%);
+    display:grid;place-items:center;
+    box-shadow:var(--shadow-sm), inset 0 1px 0 rgba(255,255,255,.95);
+    transition:transform .16s ease, box-shadow .16s ease;
+  }
+  .csst-btn:hover{transform:translateY(-1px);box-shadow:0 6px 18px -4px rgba(66,133,244,.45), inset 0 1px 0 #fff}
+  .csst-btn:active{transform:translateY(0)}
+  .csst-btn:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+  .glyph{display:grid;gap:3px;justify-items:start}
+  .glyph i{display:block;height:2px;border-radius:2px;background:var(--accent)}
+  .glyph i:nth-child(1){width:14px}
+  .glyph i:nth-child(2){width:9px}
+  .glyph i:nth-child(3){width:12px}
+  .csst-btn:hover .glyph i:nth-child(2){width:14px}
+  .glyph i{transition:width .16s ease}
+
+  /* ── Результаты ── */
+  .results{max-width:660px;margin:34px auto 120px;padding:0 24px}
+  .count{font-size:12px;color:var(--ink-3);margin-bottom:20px}
+  .hit{padding:14px 16px;border-radius:var(--r-md);margin-bottom:10px;transition:background .16s}
+  .hit:hover{background:rgba(255,255,255,.55)}
+  .hit .url{font-size:11.5px;color:var(--ink-3);margin-bottom:4px}
+  .hit h2{margin:0 0 5px;font-size:16.5px;font-weight:600;line-height:1.32}
+  .hit h2 a{color:#1a4fbf;text-decoration:none}
+  .hit h2 a:hover{text-decoration:underline}
+  .hit p{margin:0;font-size:13.5px;color:var(--ink-2)}
+
+  /* ── Стеклянная панель ── */
+  .panel{
+    position:fixed;top:18px;right:18px;bottom:18px;width:368px;
+    display:flex;flex-direction:column;
+    border-radius:var(--r-lg);
+    border:1px solid var(--glass-border);
+    background:var(--glass);
+    -webkit-backdrop-filter:blur(30px) saturate(190%);
+    backdrop-filter:blur(30px) saturate(190%);
+    box-shadow:var(--shadow-lg), inset 0 1px 0 rgba(255,255,255,.9);
+    overflow:hidden;
+  }
+  .panel-head{
+    display:flex;align-items:center;gap:11px;
+    padding:16px 18px 14px;
+    border-bottom:1px solid rgba(31,36,48,.08);
+  }
+  .head-badge{
+    width:30px;height:30px;border-radius:10px;flex:0 0 auto;
+    background:linear-gradient(145deg, var(--accent), #7aa7f7);
+    display:grid;place-items:center;
+    box-shadow:0 6px 14px -4px rgba(66,133,244,.6), inset 0 1px 0 rgba(255,255,255,.45);
+  }
+  .head-badge .g2{display:grid;gap:2.5px}
+  .head-badge .g2 i{display:block;height:1.8px;border-radius:2px;background:#fff}
+  .head-badge .g2 i:nth-child(1){width:12px}
+  .head-badge .g2 i:nth-child(2){width:8px}
+  .head-badge .g2 i:nth-child(3){width:11px}
+  .panel-title{margin:0;font-size:14px;font-weight:650;letter-spacing:-.01em}
+  .panel-sub{margin:1px 0 0;font-size:11px;color:var(--ink-3)}
+  .panel-close{
+    appearance:none;margin-left:auto;flex:0 0 auto;
+    width:30px;height:30px;border-radius:50%;cursor:pointer;
+    border:1px solid rgba(31,36,48,.08);background:rgba(255,255,255,.6);
+    color:var(--ink-2);font-size:14px;line-height:1;display:grid;place-items:center;
+    transition:background .16s,color .16s;
+  }
+  .panel-close:hover{background:#fff;color:var(--ink)}
+  .panel-close:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+  .panel-body{flex:1 1 auto;overflow-y:auto;padding:14px 14px 8px}
+  .section{margin-bottom:14px}
+  .section-head{display:flex;align-items:baseline;justify-content:space-between;padding:0 4px 8px}
+  .section-note{font-size:10.5px;color:var(--ink-3)}
+
+  /* карточка вкладки */
+  .card{
+    border-radius:var(--r-md);
+    border:1px solid rgba(255,255,255,.8);
+    background:var(--card);
+    box-shadow:0 2px 10px -6px rgba(31,36,48,.3), inset 0 1px 0 rgba(255,255,255,.85);
+    padding:10px 12px;margin-bottom:8px;
+    transition:background .16s ease, box-shadow .16s ease;
+  }
+  .card:hover{background:rgba(255,255,255,.74);box-shadow:0 6px 18px -10px rgba(31,36,48,.42), inset 0 1px 0 rgba(255,255,255,.9)}
+  .card-top{display:flex;align-items:center;gap:10px}
+  .card-name{font-size:13.5px;font-weight:620;letter-spacing:-.01em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .card.is-hidden .card-name{color:var(--ink-3);text-decoration:line-through}
+  .card-tools{margin-left:auto;display:flex;align-items:center;gap:9px;flex:0 0 auto}
+
+  /* пилюля-переключатель */
+  .sw{display:inline-flex;align-items:center;gap:7px;cursor:pointer;user-select:none}
+  .sw .txt{font-size:10px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--ink-3)}
+  .sw input{position:absolute;opacity:0;width:0;height:0}
+  .sw .track{
+    width:34px;height:20px;border-radius:999px;background:rgba(31,36,48,.16);
+    position:relative;transition:background .18s ease;flex:0 0 auto;
+  }
+  .sw .track::after{
+    content:"";position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;
+    background:#fff;box-shadow:0 1px 3px rgba(31,36,48,.35);
+    transition:transform .18s cubic-bezier(.4,0,.2,1);
+  }
+  .sw input:checked + .track{background:var(--accent)}
+  .sw input:checked + .track::after{transform:translateX(14px)}
+  .sw input:focus-visible + .track{outline:2px solid var(--accent);outline-offset:2px}
+
+  .fields{display:grid;gap:8px;margin-top:10px;padding-top:10px;border-top:1px solid rgba(31,36,48,.07)}
+  .field{display:grid;gap:4px}
+  .field > label{font-size:9.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3);display:flex;justify-content:space-between;gap:8px}
+  .field > label em{font-style:normal;text-transform:none;letter-spacing:0;font-weight:500;color:var(--ink-3);font-size:10px}
+  .input,.select{
+    width:100%;height:32px;border-radius:var(--r-sm);
+    border:1px solid rgba(31,36,48,.12);
+    background:rgba(255,255,255,.78);
+    padding:0 10px;font:inherit;font-size:12.5px;color:var(--ink);outline:0;
+    transition:border-color .16s,box-shadow .16s,background .16s;
+    -webkit-appearance:none;appearance:none;
+    min-width:0;text-overflow:ellipsis;
+  }
+  .select{
+    background-image:linear-gradient(45deg,transparent 50%,var(--ink-3) 50%),linear-gradient(135deg,var(--ink-3) 50%,transparent 50%);
+    background-position:calc(100% - 15px) 14px, calc(100% - 10px) 14px;
+    background-size:5px 5px,5px 5px;background-repeat:no-repeat;
+    padding-right:28px;
+  }
+  .input:hover,.select:hover{background:rgba(255,255,255,.92);border-color:rgba(31,36,48,.2)}
+  .input:focus,.select:focus{border-color:var(--accent);background:#fff;box-shadow:0 0 0 3px rgba(66,133,244,.18)}
+  .card.is-hidden .fields{display:none}
+
+  /* кастомные кнопки */
+  .custom{
+    display:flex;gap:8px;align-items:flex-start;
+    border-radius:var(--r-md);border:1px solid rgba(255,255,255,.8);
+    background:var(--card);padding:10px;margin-bottom:8px;
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.85);
+  }
+  .custom .stack{flex:1 1 auto;display:grid;gap:6px;min-width:0}
+  .del{
+    appearance:none;flex:0 0 auto;width:32px;height:32px;border-radius:var(--r-sm);
+    border:1px solid rgba(214,74,74,.24);background:rgba(255,245,245,.8);
+    color:#c94848;cursor:pointer;font-size:13px;line-height:1;display:grid;place-items:center;
+    transition:background .16s,border-color .16s;
+  }
+  .del:hover{background:#fff0f0;border-color:rgba(214,74,74,.5)}
+  .del:focus-visible{outline:2px solid #c94848;outline-offset:2px}
+
+  .add{
+    appearance:none;width:100%;height:38px;border-radius:var(--r-md);cursor:pointer;
+    border:1px dashed rgba(66,133,244,.45);
+    background:rgba(66,133,244,.07);color:var(--accent);
+    font:inherit;font-size:12.5px;font-weight:600;
+    transition:background .16s,border-color .16s;
+  }
+  .add:hover{background:rgba(66,133,244,.13);border-color:var(--accent)}
+  .add:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+  .panel-foot{
+    display:flex;gap:7px;align-items:center;flex-wrap:wrap;
+    padding:12px 14px 14px;
+    border-top:1px solid rgba(31,36,48,.08);
+    background:rgba(255,255,255,.34);
+  }
+  .btn{
+    appearance:none;height:32px;padding:0 12px;border-radius:var(--r-sm);cursor:pointer;
+    border:1px solid rgba(31,36,48,.12);background:rgba(255,255,255,.7);
+    font:inherit;font-size:12px;color:var(--ink-2);
+    transition:background .16s,border-color .16s,color .16s;
+  }
+  .btn:hover{background:#fff;color:var(--ink);border-color:rgba(31,36,48,.22)}
+  .btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+  .btn-primary{
+    margin-left:auto;background:var(--accent);border-color:var(--accent);color:#fff;
+    box-shadow:0 6px 16px -6px rgba(66,133,244,.75);
+  }
+  .btn-primary:hover{background:#3b78e7;border-color:#3b78e7;color:#fff}
+
+  .page-foot{
+    position:fixed;left:0;right:400px;bottom:0;padding:9px 24px;
+    font-size:10.5px;color:var(--ink-3);
+    background:rgba(255,255,255,.55);
+    border-top:1px solid rgba(255,255,255,.8);
+    -webkit-backdrop-filter:blur(16px);backdrop-filter:blur(16px);
+  }
+  .page-foot b{color:var(--ink-2)}
+  @media (max-width:960px){
+    .page-foot{display:none}
+    .panel{top:auto;left:12px;right:12px;bottom:12px;width:auto;max-height:72vh}
+  }
+</style>
+</head>
+<body>
+
+<header class="site-head">
+  <div class="head-row">
+    <div class="brand">
+      <span class="dots" aria-hidden="true"><i></i><i></i><i></i><i></i></span>Поиск
+    </div>
+    <form class="searchbox" onsubmit="return false">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true">
+        <circle cx="7" cy="7" r="4.6"/><path d="M10.5 10.5 14 14" stroke-linecap="round"/>
+      </svg>
+      <input type="text" value="переименовать вкладку поиска" aria-label="Поисковый запрос">
+      <button class="mic" type="button" aria-label="Голосовой поиск">
+        <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+          <path d="M8 1.5a2.2 2.2 0 0 1 2.2 2.2v3.6a2.2 2.2 0 1 1-4.4 0V3.7A2.2 2.2 0 0 1 8 1.5Z"/>
+          <path d="M4.4 7.1a.7.7 0 0 1 .7.7 2.9 2.9 0 1 0 5.8 0 .7.7 0 0 1 1.4 0 4.3 4.3 0 0 1-3.6 4.25v1.15h1.2a.7.7 0 0 1 0 1.4H6.3a.7.7 0 0 1 0-1.4h1.2v-1.15A4.3 4.3 0 0 1 3.7 7.8a.7.7 0 0 1 .7-.7Z"/>
+        </svg>
+      </button>
+    </form>
+  </div>
+
+  <div class="tabbar" role="tablist" aria-label="Разделы поиска">
+    <button class="tab" role="tab" aria-selected="true">Все</button>
+    <button class="tab" role="tab" aria-selected="false">Картинки</button>
+    <button class="tab" role="tab" aria-selected="false">Видео</button>
+    <button class="tab" role="tab" aria-selected="false">Карты</button>
+    <button class="tab" role="tab" aria-selected="false">Новости</button>
+    <button class="tab" role="tab" aria-selected="false">Товары</button>
+    <button class="csst-btn" id="csstBtn" title="Настроить вкладки поиска" aria-label="Настроить вкладки поиска" aria-expanded="true">
+      <span class="glyph" aria-hidden="true"><i></i><i></i><i></i></span>
+    </button>
+  </div>
+</header>
+
+<main class="results">
+  <div class="count">Результатов: около 92 400</div>
+  <article class="hit">
+    <div class="url">example.org › guide › search-tabs</div>
+    <h2><a href="#">Переименование вкладок: что учитывать</a></h2>
+    <p>Длина подписи, перенос строки в панели навигации и поведение при узком окне — короткая практическая памятка.</p>
+  </article>
+  <article class="hit">
+    <div class="url">blog.example.ru › 2026 › 03 › tab-redirect</div>
+    <h2><a href="#">Редирект вкладки на внешний сервис</a></h2>
+    <p>Как подставить текущий запрос через шаблон и не потерять его при переходе между разделами.</p>
+  </article>
+  <article class="hit">
+    <div class="url">ui.example.dev › glass-surfaces</div>
+    <h2><a href="#">Матовые поверхности в интерфейсе настроек</a></h2>
+    <p>Backdrop-filter, контраст текста поверх размытия и почему стеклу нужна граница светлее фона.</p>
+  </article>
+</main>
+
+<aside class="panel" id="panel" role="dialog" aria-modal="false" aria-label="Настройка вкладок">
+  <div class="panel-head">
+    <div class="head-badge" aria-hidden="true"><span class="g2"><i></i><i></i><i></i></span></div>
+    <div>
+      <h2 class="panel-title">Настройка вкладок</h2>
+      <p class="panel-sub">Google · настройки хранятся отдельно</p>
+    </div>
+    <button class="panel-close" id="closeBtn" aria-label="Закрыть">✕</button>
+  </div>
+
+  <div class="panel-body">
+    <section class="section">
+      <div class="section-head">
+        <span class="label">Стандартные вкладки</span>
+        <span class="section-note">6 найдено</span>
+      </div>
+
+      <div class="card">
+        <div class="card-top">
+          <span class="card-name">Все</span>
+          <div class="card-tools">
+            <label class="sw"><input type="checkbox"><span class="track"></span><span class="txt">Скрыть</span></label>
+          </div>
+        </div>
+        <div class="fields">
+          <div class="field">
+            <label>Подпись</label>
+            <input class="input" type="text" value="Все">
+          </div>
+          <div class="field">
+            <label>Быстрый выбор сервиса</label>
+            <select class="select">
+              <option>— выберите пресет —</option>
+              <option>Google</option>
+              <option>Bing</option>
+              <option>DuckDuckGo</option>
+              <option>↩ Оригинальная вкладка</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>URL редиректа <em>пусто = оригинал</em></label>
+            <input class="input" type="text" placeholder="https://…?q={query}">
+          </div>
+        </div>
+      </div>
+
+      <div class="card is-hidden">
+        <div class="card-top">
+          <span class="card-name">Картинки</span>
+          <div class="card-tools">
+            <label class="sw"><input type="checkbox" checked><span class="track"></span><span class="txt">Скрыть</span></label>
+          </div>
+        </div>
+        <div class="fields">
+          <div class="field">
+            <label>Подпись</label>
+            <input class="input" type="text" value="Картинки">
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-top">
+          <span class="card-name">Видео</span>
+          <div class="card-tools">
+            <label class="sw"><input type="checkbox"><span class="track"></span><span class="txt">Скрыть</span></label>
+          </div>
+        </div>
+        <div class="fields">
+          <div class="field">
+            <label>URL редиректа</label>
+            <input class="input" type="text" value="https://www.youtube.com/results?search_query={query}">
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-top">
+          <span class="card-name">Новости</span>
+          <div class="card-tools">
+            <label class="sw"><input type="checkbox"><span class="track"></span><span class="txt">Скрыть</span></label>
+          </div>
+        </div>
+        <div class="fields">
+          <div class="field">
+            <label>Подпись</label>
+            <input class="input" type="text" value="Новости">
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="section-head">
+        <span class="label">Кастомные кнопки</span>
+        <span class="section-note">{query} — текущий запрос</span>
+      </div>
+
+      <div class="custom">
+        <div class="stack">
+          <input class="input" type="text" value="GitHub" aria-label="Подпись кнопки">
+          <input class="input" type="text" value="https://github.com/search?q={query}" aria-label="URL кнопки">
+        </div>
+        <button class="del" aria-label="Удалить кнопку">✕</button>
+      </div>
+
+      <div class="custom">
+        <div class="stack">
+          <input class="input" type="text" value="Перевод на русский" aria-label="Подпись кнопки">
+          <input class="input" type="text" value="https://translate.google.com/?text={query}&sl=auto&tl=ru" aria-label="URL кнопки">
+        </div>
+        <button class="del" aria-label="Удалить кнопку">✕</button>
+      </div>
+
+      <button class="add" id="addBtn">+ Добавить кнопку</button>
+    </section>
+  </div>
+
+  <div class="panel-foot">
+    <button class="btn">Экспорт</button>
+    <button class="btn">Импорт</button>
+    <button class="btn">Сбросить</button>
+    <button class="btn btn-primary" id="doneBtn">Готово</button>
+  </div>
+</aside>
+
+<footer class="page-foot">
+  <b>Направление 2 — матовое стекло.</b>
+  Плюсы: панель ощущается частью страницы, хорошо смотрится на сайтах с фоновыми градиентами, крупные зоны нажатия.
+  Минусы: backdrop-filter дорогой на слабых GPU, контраст текста над пёстрым фоном нужно проверять отдельно, стекло без границы «плывёт».
+</footer>
+
+<script>
+  var panel = document.getElementById('panel');
+  var btn = document.getElementById('csstBtn');
+  function setOpen(open) {
+    panel.style.display = open ? 'flex' : 'none';
+    btn.setAttribute('aria-expanded', String(open));
+  }
+  document.getElementById('closeBtn').addEventListener('click', function () { setOpen(false); });
+  document.getElementById('doneBtn').addEventListener('click', function () { setOpen(false); });
+  btn.addEventListener('click', function () { setOpen(panel.style.display === 'none'); });
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') setOpen(false); });
+
+  document.querySelectorAll('.sw input').forEach(function (cb) {
+    cb.addEventListener('change', function () {
+      cb.closest('.card').classList.toggle('is-hidden', cb.checked);
+    });
+  });
+
+  function bindDel(el) {
+    el.addEventListener('click', function () { el.closest('.custom').remove(); });
+  }
+  document.querySelectorAll('.del').forEach(bindDel);
+
+  document.getElementById('addBtn').addEventListener('click', function () {
+    var wrap = document.createElement('div');
+    wrap.className = 'custom';
+    wrap.innerHTML =
+      '<div class="stack">' +
+      '<input class="input" type="text" placeholder="Название" aria-label="Подпись кнопки">' +
+      '<input class="input" type="text" placeholder="https://…?q={query}" aria-label="URL кнопки">' +
+      '</div><button class="del" aria-label="Удалить кнопку">✕</button>';
+    this.parentNode.insertBefore(wrap, this);
+    bindDel(wrap.querySelector('.del'));
+  });
+</script>
+</body>
+</html>

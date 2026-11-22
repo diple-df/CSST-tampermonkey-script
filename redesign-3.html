@@ -1,0 +1,453 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CSST — редизайн 3: брутализм / жёсткий контраст</title>
+<!--
+  НАПРАВЛЕНИЕ 3 из 5 — «Брутализм».
+  Идея: чистый чёрный и белый, рамки 2–3px, жёсткие смещённые тени (offset shadow)
+  без размытия, нулевые скругления, моноширинный шрифт для подписей и цифр.
+  Панель выглядит как техническая карточка-инструкция, а не как нативный диалог.
+-->
+<style>
+  :root{
+    --black:#000;
+    --white:#fff;
+    --grey:#8f8f8f;
+    --grey-line:#d4d4d4;
+    --yellow:#ffe600;
+    --bw:2px;
+    --mono:ui-monospace,SFMono-Regular,"Cascadia Mono","Segoe UI Mono",Consolas,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{
+    font:14px/1.5 var(--sans);color:var(--black);background:var(--white);
+    -webkit-font-smoothing:antialiased;
+    /* место под открытую панель — кнопка CSST остаётся видимой */
+    padding-right:432px;
+  }
+  @media (max-width:960px){
+    body{padding-right:0}
+  }
+  .kicker{
+    font-family:var(--mono);font-size:10px;font-weight:700;
+    letter-spacing:.14em;text-transform:uppercase;color:var(--black);
+  }
+
+  /* ── Шапка ── */
+  .site-head{border-bottom:var(--bw) solid var(--black);padding:0}
+  .head-inner{max-width:1140px;margin:0 auto;padding:18px 24px 0}
+  .head-top{display:flex;align-items:center;gap:18px}
+  .brand{
+    flex:0 0 auto;display:flex;align-items:center;gap:10px;
+    font-size:20px;font-weight:900;letter-spacing:-.045em;text-transform:uppercase;
+  }
+  .brand-box{
+    width:26px;height:26px;background:var(--black);color:var(--white);
+    display:grid;place-items:center;font-family:var(--mono);font-size:13px;font-weight:700;
+  }
+  .searchbox{
+    flex:1 1 auto;display:flex;height:44px;border:var(--bw) solid var(--black);
+    background:var(--white);box-shadow:4px 4px 0 var(--black);max-width:620px;
+  }
+  .searchbox input{
+    flex:1 1 auto;border:0;outline:0;padding:0 14px;font:inherit;font-size:14px;
+    background:transparent;color:var(--black);min-width:0;
+  }
+  .searchbox button{
+    flex:0 0 auto;border:0;border-left:var(--bw) solid var(--black);
+    background:var(--yellow);font:700 11px/1 var(--mono);letter-spacing:.12em;
+    text-transform:uppercase;padding:0 18px;cursor:pointer;
+  }
+  .searchbox button:hover{background:var(--black);color:var(--yellow)}
+  .searchbox button:focus-visible{outline:3px solid var(--black);outline-offset:2px}
+
+  /* ── Вкладки ── */
+  .tabbar{
+    display:flex;align-items:stretch;gap:0;margin-top:18px;
+    border-bottom:0;
+  }
+  .tab{
+    appearance:none;cursor:pointer;background:var(--white);
+    border:var(--bw) solid var(--black);border-right:0;
+    font-family:var(--mono);font-size:11.5px;font-weight:700;
+    letter-spacing:.06em;text-transform:uppercase;
+    padding:9px 16px;color:var(--black);white-space:nowrap;
+  }
+  .tab:last-of-type{border-right:var(--bw) solid var(--black)}
+  .tab:hover{background:var(--black);color:var(--white)}
+  .tab[aria-selected="true"]{background:var(--black);color:var(--white)}
+  .tab:focus-visible{outline:3px solid var(--yellow);outline-offset:-5px}
+  .tabbar-spacer{flex:1 1 auto;border-bottom:var(--bw) solid var(--black);align-self:flex-end}
+
+  /* ── Кнопка CSST ── */
+  .csst-btn{
+    appearance:none;cursor:pointer;flex:0 0 auto;
+    width:40px;height:38px;display:grid;place-items:center;
+    background:var(--yellow);border:var(--bw) solid var(--black);
+    box-shadow:3px 3px 0 var(--black);margin-left:10px;
+    transition:transform .06s linear, box-shadow .06s linear, background .12s;
+  }
+  .csst-btn:hover{background:var(--black)}
+  .csst-btn:hover .g i{background:var(--yellow)}
+  .csst-btn:active{transform:translate(3px,3px);box-shadow:0 0 0 var(--black)}
+  .csst-btn:focus-visible{outline:3px solid var(--black);outline-offset:3px}
+  .g{display:grid;gap:3px;justify-items:start}
+  .g i{display:block;height:2.5px;background:var(--black);transition:background .12s}
+  .g i:nth-child(1){width:16px}
+  .g i:nth-child(2){width:10px}
+  .g i:nth-child(3){width:13px}
+
+  /* ── Результаты ── */
+  .results{max-width:680px;margin:30px auto 140px;padding:0 24px}
+  .count{
+    font-family:var(--mono);font-size:11px;letter-spacing:.06em;
+    text-transform:uppercase;border-bottom:var(--bw) solid var(--black);
+    padding-bottom:6px;margin-bottom:22px;display:flex;justify-content:space-between;
+  }
+  .hit{margin-bottom:24px}
+  .hit .url{font-family:var(--mono);font-size:11px;color:var(--grey);margin-bottom:3px}
+  .hit h2{margin:0 0 4px;font-size:17px;font-weight:800;letter-spacing:-.02em;line-height:1.25}
+  .hit h2 a{color:var(--black);text-decoration:none;box-shadow:inset 0 -3px 0 var(--yellow)}
+  .hit h2 a:hover{background:var(--yellow);box-shadow:none}
+  .hit p{margin:0;font-size:13.5px;color:#333}
+
+  /* ── Панель ── */
+  .panel{
+    position:fixed;top:16px;right:16px;bottom:16px;width:400px;
+    display:flex;flex-direction:column;
+    background:var(--white);border:3px solid var(--black);
+    box-shadow:8px 8px 0 var(--black);
+  }
+  .panel-head{
+    display:flex;align-items:center;gap:10px;
+    border-bottom:3px solid var(--black);padding:12px 14px;background:var(--yellow);
+  }
+  .panel-head h2{
+    margin:0;font-size:14px;font-weight:900;letter-spacing:-.01em;
+    text-transform:uppercase;
+  }
+  .panel-close{
+    appearance:none;margin-left:auto;flex:0 0 auto;
+    width:28px;height:28px;cursor:pointer;
+    border:var(--bw) solid var(--black);background:var(--white);
+    font-size:14px;line-height:1;font-weight:700;display:grid;place-items:center;
+  }
+  .panel-close:hover{background:var(--black);color:var(--white)}
+  .panel-close:focus-visible{outline:3px solid var(--black);outline-offset:2px}
+
+  .panel-body{flex:1 1 auto;overflow-y:auto;padding:0}
+  .section{border-bottom:3px solid var(--black)}
+  .section:last-child{border-bottom:0}
+  .section-head{
+    display:flex;align-items:baseline;justify-content:space-between;gap:8px;
+    padding:9px 14px;background:var(--black);color:var(--white);
+  }
+  .section-head .kicker{color:var(--white)}
+  .section-count{font-family:var(--mono);font-size:10px;letter-spacing:.08em;color:var(--yellow)}
+
+  .row{border-bottom:1px solid var(--grey-line);padding:11px 14px}
+  .row:last-child{border-bottom:0}
+  .row-top{display:flex;align-items:center;gap:10px}
+  .row-name{font-size:14px;font-weight:800;letter-spacing:-.015em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .row.is-hidden .row-name{color:var(--grey);text-decoration:line-through;text-decoration-thickness:2px}
+  .row-tools{margin-left:auto;display:flex;align-items:center;gap:10px;flex:0 0 auto}
+
+  /* квадратный чекбокс */
+  .sw{display:inline-flex;align-items:center;gap:7px;cursor:pointer;user-select:none}
+  .sw .txt{font-family:var(--mono);font-size:9.5px;font-weight:700;letter-spacing:.1em;text-transform:uppercase}
+  .sw input{position:absolute;opacity:0;width:0;height:0}
+  .sw .sq{
+    width:18px;height:18px;border:var(--bw) solid var(--black);background:var(--white);
+    display:grid;place-items:center;transition:background .1s;
+  }
+  .sw .sq::after{
+    content:"";width:8px;height:4px;border-left:2.5px solid var(--white);
+    border-bottom:2.5px solid var(--white);transform:rotate(-45deg) translateY(-1px);opacity:0;
+  }
+  .sw input:checked + .sq{background:var(--black)}
+  .sw input:checked + .sq::after{opacity:1}
+  .sw input:checked ~ .txt{color:var(--grey)}
+  .sw input:focus-visible + .sq{outline:3px solid var(--yellow);outline-offset:2px}
+  .sw:hover .sq{background:var(--yellow)}
+
+  .fields{display:grid;gap:9px;margin-top:11px}
+  .field{display:grid;gap:3px}
+  .field > label{
+    font-family:var(--mono);font-size:9.5px;font-weight:700;
+    letter-spacing:.1em;text-transform:uppercase;
+    display:flex;justify-content:space-between;gap:8px;
+  }
+  .field > label em{font-style:normal;font-weight:400;letter-spacing:0;text-transform:none;color:var(--grey);font-family:var(--mono)}
+  .input,.select{
+    width:100%;height:30px;border:var(--bw) solid var(--black);border-radius:0;
+    background:var(--white);padding:0 8px;font:inherit;font-size:12.5px;color:var(--black);outline:0;
+    -webkit-appearance:none;appearance:none;
+    min-width:0;text-overflow:ellipsis;
+  }
+  .select{
+    padding-right:26px;
+    background-image:linear-gradient(45deg,transparent 50%,var(--black) 50%),linear-gradient(135deg,var(--black) 50%,transparent 50%);
+    background-position:calc(100% - 14px) 12px, calc(100% - 9px) 12px;
+    background-size:5px 5px,5px 5px;background-repeat:no-repeat;
+  }
+  .input:focus,.select:focus{box-shadow:3px 3px 0 var(--black);background:var(--yellow)}
+  .input::placeholder{color:var(--grey)}
+  .row.is-hidden .fields{display:none}
+
+  .custom{border-bottom:1px solid var(--grey-line);padding:11px 14px;display:flex;gap:8px;align-items:flex-start}
+  .custom .stack{flex:1 1 auto;display:grid;gap:6px;min-width:0}
+  .del{
+    appearance:none;flex:0 0 auto;width:30px;height:30px;cursor:pointer;
+    border:var(--bw) solid var(--black);background:var(--white);
+    font-size:13px;line-height:1;font-weight:700;display:grid;place-items:center;
+  }
+  .del:hover{background:#ff3b30;border-color:#ff3b30;color:var(--white)}
+  .del:focus-visible{outline:3px solid var(--yellow);outline-offset:2px}
+
+  .add{
+    appearance:none;display:block;width:calc(100% - 28px);margin:12px 14px;
+    height:36px;cursor:pointer;border:var(--bw) dashed var(--black);
+    background:var(--white);font-family:var(--mono);font-size:11.5px;
+    font-weight:700;letter-spacing:.06em;text-transform:uppercase;
+  }
+  .add:hover{background:var(--black);color:var(--white);border-style:solid}
+  .add:focus-visible{outline:3px solid var(--yellow);outline-offset:2px}
+
+  .panel-foot{
+    display:flex;gap:8px;flex-wrap:wrap;align-items:center;
+    border-top:3px solid var(--black);padding:11px 14px;background:var(--white);
+  }
+  .btn{
+    appearance:none;height:30px;padding:0 11px;cursor:pointer;
+    border:var(--bw) solid var(--black);background:var(--white);
+    font-family:var(--mono);font-size:10.5px;font-weight:700;
+    letter-spacing:.08em;text-transform:uppercase;color:var(--black);
+  }
+  .btn:hover{background:var(--black);color:var(--white)}
+  .btn:focus-visible{outline:3px solid var(--yellow);outline-offset:2px}
+  .btn-primary{margin-left:auto;background:var(--yellow);box-shadow:3px 3px 0 var(--black)}
+  .btn-primary:hover{background:var(--black);color:var(--yellow)}
+  .btn-primary:active{transform:translate(3px,3px);box-shadow:none}
+
+  .page-foot{
+    position:fixed;left:0;right:0;bottom:0;
+    border-top:3px solid var(--black);background:var(--yellow);
+    padding:8px 24px;font-family:var(--mono);font-size:10.5px;
+    letter-spacing:.02em;color:var(--black);
+  }
+  .page-foot b{text-transform:uppercase;letter-spacing:.08em}
+  @media (max-width:960px){
+    .panel{left:12px;right:12px;top:auto;bottom:12px;width:auto;max-height:74vh;box-shadow:6px 6px 0 var(--black)}
+    .page-foot{display:none}
+  }
+</style>
+</head>
+<body>
+
+<header class="site-head">
+  <div class="head-inner">
+    <div class="head-top">
+      <div class="brand"><span class="brand-box">Б</span>Бинг</div>
+      <form class="searchbox" onsubmit="return false">
+        <input type="text" value="как скрыть вкладку товары" aria-label="Поисковый запрос">
+        <button type="submit">Найти</button>
+      </form>
+    </div>
+
+    <div class="tabbar" role="tablist" aria-label="Разделы поиска">
+      <button class="tab" role="tab" aria-selected="true">Все</button>
+      <button class="tab" role="tab" aria-selected="false">Картинки</button>
+      <button class="tab" role="tab" aria-selected="false">Видео</button>
+      <button class="tab" role="tab" aria-selected="false">Карты</button>
+      <button class="tab" role="tab" aria-selected="false">Новости</button>
+      <button class="tab" role="tab" aria-selected="false">Товары</button>
+      <span class="tabbar-spacer" aria-hidden="true"></span>
+      <button class="csst-btn" id="csstBtn" title="Настроить вкладки поиска" aria-label="Настроить вкладки поиска" aria-expanded="true">
+        <span class="g" aria-hidden="true"><i></i><i></i><i></i></span>
+      </button>
+    </div>
+  </div>
+</header>
+
+<main class="results">
+  <div class="count"><span>Результатов: 1 240 000</span><span>0.28 s</span></div>
+  <article class="hit">
+    <div class="url">support.example.com/skopebar</div>
+    <h2><a href="#">Скрыть лишние разделы в панели навигации</a></h2>
+    <p>Пошагово: как убрать «Товары» и «Рейсы», не сломав раскладку строки вкладок и не оставив пустого места.</p>
+  </article>
+  <article class="hit">
+    <div class="url">forum.example.org/t/settings-panel</div>
+    <h2><a href="#">Панель настроек не открывается: разбор причин</a></h2>
+    <p>Сторонние наблюдатели DOM, удаление вставленных узлов и почему панель оказывается пустой после отрисовки.</p>
+  </article>
+  <article class="hit">
+    <div class="url">design.example.net/brutal-ui</div>
+    <h2><a href="#">Жёсткие рамки и смещённые тени: когда это уместно</a></h2>
+    <p>Брутализм в утилитарных интерфейсах: предсказуемая геометрия, читаемость на плохих экранах, ноль размытий.</p>
+  </article>
+</main>
+
+<aside class="panel" id="panel" role="dialog" aria-modal="false" aria-label="Настройка вкладок">
+  <div class="panel-head">
+    <h2>Настройка вкладок</h2>
+    <button class="panel-close" id="closeBtn" aria-label="Закрыть">✕</button>
+  </div>
+
+  <div class="panel-body">
+    <section class="section">
+      <div class="section-head">
+        <span class="kicker">Стандартные вкладки</span>
+        <span class="section-count">06</span>
+      </div>
+
+      <div class="row">
+        <div class="row-top">
+          <span class="row-name">Все</span>
+          <div class="row-tools">
+            <label class="sw"><input type="checkbox"><span class="sq"></span><span class="txt">Скрыть</span></label>
+          </div>
+        </div>
+        <div class="fields">
+          <div class="field">
+            <label>Подпись</label>
+            <input class="input" type="text" value="Все">
+          </div>
+          <div class="field">
+            <label>Быстрый выбор сервиса</label>
+            <select class="select">
+              <option>— выберите пресет —</option>
+              <option>Bing</option>
+              <option>Google</option>
+              <option>Яндекс</option>
+              <option>↩ Оригинальная вкладка</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>URL редиректа <em>пусто = оригинал</em></label>
+            <input class="input" type="text" placeholder="https://…?q={query}">
+          </div>
+        </div>
+      </div>
+
+      <div class="row is-hidden">
+        <div class="row-top">
+          <span class="row-name">Товары</span>
+          <div class="row-tools">
+            <label class="sw"><input type="checkbox" checked><span class="sq"></span><span class="txt">Скрыть</span></label>
+          </div>
+        </div>
+        <div class="fields">
+          <div class="field"><label>Подпись</label><input class="input" type="text" value="Товары"></div>
+        </div>
+      </div>
+
+      <div class="row">
+        <div class="row-top">
+          <span class="row-name">Картинки</span>
+          <div class="row-tools">
+            <label class="sw"><input type="checkbox"><span class="sq"></span><span class="txt">Скрыть</span></label>
+          </div>
+        </div>
+        <div class="fields">
+          <div class="field">
+            <label>URL редиректа</label>
+            <input class="input" type="text" value="https://yandex.ru/images/search?text={query}">
+          </div>
+        </div>
+      </div>
+
+      <div class="row">
+        <div class="row-top">
+          <span class="row-name">Видео</span>
+          <div class="row-tools">
+            <label class="sw"><input type="checkbox"><span class="sq"></span><span class="txt">Скрыть</span></label>
+          </div>
+        </div>
+        <div class="fields">
+          <div class="field"><label>Подпись</label><input class="input" type="text" value="Видео"></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="section-head">
+        <span class="kicker">Кастомные кнопки</span>
+        <span class="section-count">02</span>
+      </div>
+
+      <div class="custom">
+        <div class="stack">
+          <input class="input" type="text" value="GitHub" aria-label="Подпись кнопки">
+          <input class="input" type="text" value="https://github.com/search?q={query}" aria-label="URL кнопки">
+        </div>
+        <button class="del" aria-label="Удалить кнопку">✕</button>
+      </div>
+
+      <div class="custom">
+        <div class="stack">
+          <input class="input" type="text" value="Ozon" aria-label="Подпись кнопки">
+          <input class="input" type="text" value="https://www.ozon.ru/search/?text={query}" aria-label="URL кнопки">
+        </div>
+        <button class="del" aria-label="Удалить кнопку">✕</button>
+      </div>
+
+      <button class="add" id="addBtn">+ Добавить кнопку</button>
+    </section>
+  </div>
+
+  <div class="panel-foot">
+    <button class="btn">Экспорт</button>
+    <button class="btn">Импорт</button>
+    <button class="btn">Сброс</button>
+    <button class="btn btn-primary" id="doneBtn">Готово</button>
+  </div>
+</aside>
+
+<footer class="page-foot">
+  <b>Направление 3 — брутализм.</b>
+  Плюсы: максимальный контраст и предсказуемая геометрия, ноль дорогих эффектов, состояния нажатия читаются мгновенно.
+  Минусы: визуально конфликтует с нативным UI поисковика, жёсткие рамки быстро утомляют, плохо масштабируется на длинные списки.
+</footer>
+
+<script>
+  var panel = document.getElementById('panel');
+  var btn = document.getElementById('csstBtn');
+  function setOpen(open) {
+    panel.style.display = open ? 'flex' : 'none';
+    btn.setAttribute('aria-expanded', String(open));
+  }
+  document.getElementById('closeBtn').addEventListener('click', function () { setOpen(false); });
+  document.getElementById('doneBtn').addEventListener('click', function () { setOpen(false); });
+  btn.addEventListener('click', function () { setOpen(panel.style.display === 'none'); });
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') setOpen(false); });
+
+  document.querySelectorAll('.sw input').forEach(function (cb) {
+    cb.addEventListener('change', function () {
+      cb.closest('.row').classList.toggle('is-hidden', cb.checked);
+    });
+  });
+
+  function bindDel(el) {
+    el.addEventListener('click', function () { el.closest('.custom').remove(); });
+  }
+  document.querySelectorAll('.del').forEach(bindDel);
+
+  document.getElementById('addBtn').addEventListener('click', function () {
+    var wrap = document.createElement('div');
+    wrap.className = 'custom';
+    wrap.innerHTML =
+      '<div class="stack">' +
+      '<input class="input" type="text" placeholder="Название" aria-label="Подпись кнопки">' +
+      '<input class="input" type="text" placeholder="https://…?q={query}" aria-label="URL кнопки">' +
+      '</div><button class="del" aria-label="Удалить кнопку">✕</button>';
+    this.parentNode.insertBefore(wrap, this);
+    bindDel(wrap.querySelector('.del'));
+  });
+</script>
+</body>
+</html>
