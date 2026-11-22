@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Custom Search System Tabs
 // @namespace    https://github.com/diple-df/CSST-tampermonkey-script
-// @version      1.3.2
+// @version      1.3.3
 // @description  Скрывай, переименовывай, перенаправляй и добавляй кнопки-вкладки поиска. Google, Яндекс, Bing, DuckDuckGo, Ecosia, Startpage, Brave Search и Qwant. Поддержка {query} для подстановки запроса.
 // @author       diple_df x claude
 // @match        *://duckduckgo.com/*
@@ -2945,8 +2945,12 @@
         }
         const W = 360;
         const btn = document.getElementById('usc-gear-btn');
-        const r = btn ? btn.getBoundingClientRect() : { right: window.innerWidth - 16, top: 40, bottom: 60 };
-        const left = Math.min(Math.max(8, r.right - W), window.innerWidth - W - 8);
+        const r = btn ? btn.getBoundingClientRect() : { left: window.innerWidth - 48, right: window.innerWidth - 16, top: 40, bottom: 60 };
+        // Панель растёт от кнопки ВПРАВО: её левый край совпадает с левым
+        // краем кнопки, поэтому под кнопкой оказывается иконка вкладок,
+        // а не крестик. Если справа не хватает места — сдвигаем влево
+        // ровно настолько, чтобы панель осталась в пределах окна.
+        const left = Math.max(8, Math.min(r.left, window.innerWidth - W - 8));
         const maxBottom = window.innerHeight - 10;
 
         modal.style.maxHeight = Math.max(240, maxBottom - 10) + 'px';
@@ -4244,7 +4248,7 @@
        баннером один раз на версию. Любая ошибка гасится молча.
        ═══════════════════════════════════════════════════════════════════════ */
 
-    const SCRIPT_VERSION = '1.3.2';
+    const SCRIPT_VERSION = '1.3.3';
     const UPDATE_URL = 'https://raw.githubusercontent.com/diple-df/CSST-tampermonkey-script/main/csst_tmprmnk.user.js';
     const UPDATE_META_KEY = 'usc_update_meta';
     const UPDATE_CHECK_EVERY = 24 * 60 * 60 * 1000;   // сутки
