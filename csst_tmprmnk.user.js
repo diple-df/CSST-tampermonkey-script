@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Custom Search System Tabs
 // @namespace    https://github.com/diple-df/CSST-tampermonkey-script
-// @version      1.3.0
+// @version      1.3.1
 // @description  Скрывай, переименовывай, перенаправляй и добавляй кнопки-вкладки поиска. Google, Яндекс, Bing, DuckDuckGo, Ecosia, Startpage, Brave Search и Qwant. Поддержка {query} для подстановки запроса.
 // @author       diple_df x claude
 // @match        *://duckduckgo.com/*
@@ -31,7 +31,7 @@
 // ==/UserScript==
 
 /*
- * ПРИВАТНОСТЬ (IDEAS.md №16).
+ * ПРИВАТНОСТЬ.
  *
  * В хранилище (GM_setValue) попадают ТОЛЬКО:
  *   • подписи вкладок и кастомных кнопок;
@@ -42,7 +42,11 @@
  *
  * Поисковые запросы НИКОГДА не сохраняются и никуда не отправляются:
  * {query} подставляется в момент клика/применения и живёт только в DOM.
- * Скрипт не делает сетевых запросов и не грузит внешних ресурсов.
+ *
+ * Сетевой запрос в скрипте ровно один и он не связан с запросами
+ * пользователя: не чаще раза в сутки скрипт скачивает свой собственный
+ * файл с raw.githubusercontent.com, чтобы узнать номер новой версии
+ * (см. раздел «АВТООБНОВЛЕНИЕ»). Никаких веб-шрифтов, CDN и аналитики.
  */
 (function () {
     'use strict';
@@ -73,12 +77,24 @@
         try { return [...(root || document).querySelectorAll(sel)]; } catch (_) { return []; }
     }
 
+    // Вкладка — не обязательно ссылка: у Startpage это <button role="link">
+    // внутри <form>. Один общий селектор, чтобы все места согласовались.
+    const TAB_SELECTOR = 'a[href], button[role="link"], [role="tab"], [data-usc-key]';
+
+    function isTabNode(el) {
+        if (!el || !el.tagName) return false;
+        if (el.tagName === 'A' || el.tagName === 'BUTTON') return true;
+        if (el.hasAttribute('data-usc-key')) return true;
+        const role = el.getAttribute('role');
+        return role === 'tab' || role === 'menuitem' || role === 'link';
+    }
+
     function paramIs(params, rule) {
         return params.get(rule.key) === rule.value;
     }
 
     /* ═══════════════════════════════════════════════════════════════════════
-       1. ДВИЖКИ — ДАННЫЕ, А НЕ КОД (IDEAS.md №2)
+       1. ДВИЖКИ — ДАННЫЕ, А НЕ КОД
 
        Адаптер = описание: селекторы, обёртка, ссылочный класс и declarative
        kindMap. Функция остаётся только там, где нужна настоящая логика
@@ -91,12 +107,13 @@
         if (!spec) return function () { return null; };
         const liId     = spec.liId || null;      // [[/re/, 'kind'], ...] по id ближайшего li
         const host     = spec.host || null;      // [[/re/, 'kind'], ...] по hostname
+        const prePath  = spec.prePath || null;   // проверки ДО гейта onlyPath
         const onlyPath = spec.onlyPath || null;  // ранний гейт: pathname обязан совпасть
         const path     = spec.path || null;      // [[/re/, 'kind'], ...]
         const params   = spec.params || null;    // [{key, value, kind}]
         const webWhen  = spec.webWhen || null;   // [{host?, path?, param, absent?}]
 
-        return function classifyAnchor(a) {
+        return function classifyAnchor(a, forcedUrl) {
             if (liId) {
                 const li = a.closest && a.closest('li[id]');
                 if (li) {
@@ -107,11 +124,16 @@
                     return null;
                 }
             }
-            const url = urlOf(a);
+            const url = forcedUrl || urlOf(a);
             if (!url) return null;
             if (host) {
                 for (let i = 0; i < host.length; i++) {
                     if (host[i][0].test(url.hostname)) return host[i][1];
+                }
+            }
+            if (prePath) {
+                for (let i = 0; i < prePath.length; i++) {
+                    if (prePath[i][0].test(url.pathname)) return prePath[i][1];
                 }
             }
             if (onlyPath) {
@@ -216,6 +238,9 @@
             },
             kindMap: {
                 host: [[/maps\.google\./i, 'maps']],
+                // /maps на www.google.com проверяется до гейта /search, иначе
+                // вкладка «Карты» перестаёт опознаваться (регрессия 1.2.2).
+                prePath: [[/^\/maps(\/|$)/i, 'maps']],
                 onlyPath: [/^\/search/, /^\/$/],
                 params: [
                     { key: 'tbm', value: 'isch', kind: 'images' },
@@ -317,16 +342,28 @@
             storageKey: 'usc_cfg_ecosia',
             test: h => /(^|\.)ecosia\.org$/i.test(h),
             nav: {
+                // Реальная разметка www.ecosia.org/search (Wayback, 2024-11;
+                // живой запрос отдаёт Cloudflare-заглушку):
+                //   <nav data-test-id="layout-navigation" aria-label="Search menu">
+                //     <ul role="menubar" class="search-navigation__list">
+                //       <li><div class="tab-link"><a data-test-id="tab-link" href="/images?q=…">
+                // Атрибут здесь data-test-id (с дефисом), а не data-testid, и
+                // значения "search-nav" у Ecosia нет.
+                // Гамбургер-меню сайта (<nav data-test-id="main-nav">) идёт в
+                // документе ВЫШЕ строки вкладок, поэтому общий 'nav ul' без
+                // проверки формы кандидата подставлял бы кнопку в меню сайта.
                 containers: [
+                    'nav[data-test-id="layout-navigation"] [role="menubar"]',
+                    'nav[data-test-id="layout-navigation"] ul',
+                    'nav[aria-label*="Search" i] ul[role="menubar"]',
                     'nav[aria-label*="Search" i] ul',
-                    'nav[aria-label*="Main" i]',
-                    '[data-test-id="search-nav"]',
-                    'nav ul',
+                    'ul.search-navigation__bar-list',
                 ],
                 wrap: 'li',
+                itemClass: 'search-navigation__item',
                 linkClass: '',
-                injectMargin: '0 8px',
-                trigger: { size: 26, radius: '6px', margin: '0 6px' },
+                injectMargin: '0 6px',
+                trigger: { size: 26, radius: '6px', margin: '0 4px' },
             },
             kindMap: {
                 path: [
@@ -353,13 +390,24 @@
             storageKey: 'usc_cfg_startpage',
             test: h => /(^|\.)startpage\.com$/i.test(h),
             nav: {
+                // Реальная разметка www.startpage.com/sp/search (Wayback, 2025-04;
+                // живой запрос отдаёт заглушку Anubis):
+                //   <nav class="inline-nav" aria-label="search categories">
+                //     <div class="categories"><div class="vertical-link-container">
+                //       <form action="/sp/search"><input type="hidden" name="cat" value="images">
+                //         <button data-testid="Images" role="link">…
+                // Вкладки Startpage — это <button> внутри <form>, а не <a>:
+                // внутри inline-nav нет ни одного <ul>, поэтому прежние
+                // 'nav … ul' селекторы не находили ничего.
+                // Целимся в сам <nav>: <div class="categories"> — grid ровно на
+                // шесть колонок, седьмой элемент сжал бы вкладки.
                 containers: [
-                    'nav[aria-label*="search" i] ul',
-                    '#main nav ul',
-                    '.w-gl__navigation ul',
-                    'nav ul',
+                    'nav[aria-label*="search categories" i]',
+                    'nav.inline-nav',
+                    '.inline-nav',
+                    '#main nav.inline-nav',
                 ],
-                wrap: 'li',
+                wrap: null,
                 linkClass: '',
                 injectMargin: '0 8px',
                 trigger: { size: 26, radius: '6px', margin: '0 6px' },
@@ -387,16 +435,24 @@
             storageKey: 'usc_cfg_brave',
             test: h => /^search\.brave\.com$/i.test(h) || /(^|\.)brave\.com$/i.test(h),
             nav: {
+                // Реальная разметка search.brave.com (проверено по живому
+                // HTML-ответу, не по догадке):
+                //   <nav class="tabs"><ul id="primary-tabs">
+                //     <li class="tab-item"><a href="/images?q=…&source=web">
+                // Селекторов '#search-tabs' и '[role="tablist"]' на странице
+                // нет — прежний первый селектор не совпадал никогда.
                 containers: [
-                    '#search-tabs',
-                    'nav[aria-label*="Search" i]',
-                    'div[role="tablist"]',
-                    'nav ul',
+                    'nav.tabs > ul#primary-tabs',
+                    '#primary-tabs',
+                    'nav.tabs > ul',
+                    'nav[class*="tabs"] > ul',
+                    'nav[aria-label*="Search" i] ul',
                 ],
                 wrap: 'li',
+                itemClass: 'tab-item',
                 linkClass: '',
-                injectMargin: '0 8px',
-                trigger: { size: 26, radius: '6px', margin: '0 6px' },
+                injectMargin: '0 6px',
+                trigger: { size: 26, radius: '6px', margin: '0 4px' },
             },
             kindMap: {
                 path: [
@@ -424,14 +480,16 @@
             storageKey: 'usc_cfg_qwant',
             test: h => /(^|\.)qwant\.com$/i.test(h),
             nav: {
-                // Классы у Qwant обфусцированы, зато есть стабильный testid
-                // на каждой вкладке: контейнер = родитель вкладки «web».
+                // Классы у Qwant обфусцированы, зато у каждой вкладки есть
+                // стабильный data-testid. Контейнер = родитель вкладки «web»,
+                // а обёртка нового элемента = класс этой же вкладки.
                 containers: [],
                 containerFrom: 'a[data-testid="webNavItem"]',
-                wrap: null,
+                wrap: 'div',
+                itemFromAnchor: true,
                 linkClass: '',
-                injectMargin: '0 8px',
-                trigger: { size: 26, radius: '8px', margin: '0 8px 0 10px' },
+                injectMargin: '0 6px',
+                trigger: { size: 26, radius: '8px', margin: '0 6px' },
             },
             kindMap: {
                 path: [
@@ -454,6 +512,7 @@
 
     for (const k of Object.keys(ENGINES)) {
         const e = ENGINES[k];
+        e.key = k;
         e.nav.trigger = Object.assign({}, TRIGGER_DEFAULTS, e.nav.trigger || {});
         e.classify = compileKindMap(e.kindMap);
     }
@@ -469,10 +528,10 @@
     if (!ENGINE) return;
 
     /* ═══════════════════════════════════════════════════════════════════════
-       2. ЛОКАЛИЗАЦИЯ (IDEAS.md №19, №20)
+       2. ЛОКАЛИЗАЦИЯ
 
        Строки — данные. Язык определяется по странице, но пользователь может
-       зафиксировать любой из списка в панели (№20) — выбор сохраняется.
+       зафиксировать любой из списка в панели — выбор сохраняется.
        ═══════════════════════════════════════════════════════════════════════ */
 
     function detectLang() {
@@ -587,6 +646,43 @@
             presetPlaceholder: '— виберіть пресет —', original: 'Оригінальна',
             namePlaceholder: 'Назва', urlPlaceholder: 'https://…?q={query}', del: 'Видалити',
             gearTitle: 'Налаштувати вкладки пошуку', trayLabel: 'Швидкі дії',
+            engineWord: 'движок',
+            export: 'Експорт',
+            import: 'Імпорт',
+            exportTitle: 'Експорт налаштувань',
+            importTitle: 'Імпорт налаштувань',
+            copiedFail: 'Не вдалося скопіювати',
+            statusSaved: 'Збережено',
+            presetField: 'Швидкий вибір сервісу',
+            tabHiddenMsg: 'Вкладку сховано',
+            tabShownMsg: 'Вкладку показано',
+            resetDone: 'Налаштування скинуто',
+            importOk: 'Налаштування імпортовано',
+            importBad: 'Поганий файл: очікувався об’єкт конфігурації CSST',
+            dragHint: 'Перетягніть, щоб змінити порядок',
+            badgeTitle: 'схованих вкладок',
+            expand: 'Розгорнути',
+            collapse: 'Згорнути',
+            tabsWord: 'вкладок',
+            hiddenWord: 'сховано',
+            allVisible: 'усі видимі',
+            removeButton: 'Прибрати кнопку CSST',
+            langChanged: 'Мову інтерфейсу змінено',
+            orderMoved: 'Вкладку переміщено',
+            invalidUrl: 'Потрібен повний URL з {query}',
+            urlOk: 'Підстановку запиту увімкнено.',
+            urlEmptyHint: 'Порожньо — вкладка веде туди ж, куди вела.',
+            exportHint: 'Скопіюйте цей JSON у надійне місце.',
+            importHint: 'Вставте JSON, отриманий під час експорту.',
+            notJson: 'Це не JSON',
+            notObject: 'Очікувався об’єкт JSON',
+            schemaBad: 'Відхилено: невідома версія схеми',
+            toggleHide: 'Показати/сховати вкладку',
+            trayHide: 'Сховати поточну вкладку',
+            trayShow: 'Показати поточну вкладку',
+            searchIn: 'Шукати вкладку…',
+            statusNone: 'за замовчуванням',
+            removeWrap: 'Прибрати кнопку CSST',
         },
         de: {
             title: 'Such-Tabs', close: 'Schließen', hide: 'Ausblenden', show: 'Anzeigen',
@@ -607,6 +703,43 @@
             presetPlaceholder: '— Vorlage wählen —', original: 'Original',
             namePlaceholder: 'Name', urlPlaceholder: 'https://…?q={query}', del: 'Löschen',
             gearTitle: 'Such-Tabs anpassen', trayLabel: 'Schnellaktionen',
+            engineWord: 'Engine',
+            export: 'Export',
+            import: 'Import',
+            exportTitle: 'Einstellungen exportieren',
+            importTitle: 'Einstellungen importieren',
+            copiedFail: 'Kopieren fehlgeschlagen',
+            statusSaved: 'Gespeichert',
+            presetField: 'Schnellauswahl Dienst',
+            tabHiddenMsg: 'Tab ausgeblendet',
+            tabShownMsg: 'Tab angezeigt',
+            resetDone: 'Einstellungen zurückgesetzt',
+            importOk: 'Einstellungen importiert',
+            importBad: 'Ungültige Datei: CSST-Konfiguration erwartet',
+            dragHint: 'Ziehen, um die Reihenfolge zu ändern',
+            badgeTitle: 'ausgeblendete Tabs',
+            expand: 'Aufklappen',
+            collapse: 'Zuklappen',
+            tabsWord: 'Tabs',
+            hiddenWord: 'ausgeblendet',
+            allVisible: 'alle sichtbar',
+            removeButton: 'CSST-Schaltfläche entfernen',
+            langChanged: 'Sprache geändert',
+            orderMoved: 'Tab verschoben',
+            invalidUrl: 'Vollständige URL mit {query} nötig',
+            urlOk: 'Suchbegriff-Ersetzung aktiv.',
+            urlEmptyHint: 'Leer — der Tab führt wie zuvor.',
+            exportHint: 'Kopieren Sie dieses JSON an einen sicheren Ort.',
+            importHint: 'Fügen Sie das exportierte JSON ein.',
+            notJson: 'Das ist kein JSON',
+            notObject: 'JSON-Objekt erwartet',
+            schemaBad: 'Abgelehnt: unbekannte Schema-Version',
+            toggleHide: 'Tab ein-/ausblenden',
+            trayHide: 'Diesen Tab ausblenden',
+            trayShow: 'Diesen Tab anzeigen',
+            searchIn: 'Tabs suchen…',
+            statusNone: 'Standard',
+            removeWrap: 'CSST-Schaltfläche entfernen',
         },
         fr: {
             title: 'Onglets', close: 'Fermer', hide: 'Masquer', show: 'Afficher',
@@ -627,6 +760,43 @@
             presetPlaceholder: '— préréglage —', original: 'Original',
             namePlaceholder: 'Nom', urlPlaceholder: 'https://…?q={query}', del: 'Supprimer',
             gearTitle: 'Personnaliser les onglets', trayLabel: 'Actions rapides',
+            engineWord: 'moteur',
+            export: 'Exporter',
+            import: 'Importer',
+            exportTitle: 'Exporter les réglages',
+            importTitle: 'Importer les réglages',
+            copiedFail: 'Copie impossible',
+            statusSaved: 'Enregistré',
+            presetField: 'Service rapide',
+            tabHiddenMsg: 'Onglet masqué',
+            tabShownMsg: 'Onglet affiché',
+            resetDone: 'Réglages réinitialisés',
+            importOk: 'Réglages importés',
+            importBad: 'Fichier invalide : configuration CSST attendue',
+            dragHint: 'Glissez pour réordonner',
+            badgeTitle: 'onglets masqués',
+            expand: 'Développer',
+            collapse: 'Réduire',
+            tabsWord: 'onglets',
+            hiddenWord: 'masqués',
+            allVisible: 'tous visibles',
+            removeButton: 'Supprimer le bouton CSST',
+            langChanged: 'Langue de l\'interface changée',
+            orderMoved: 'Onglet déplacé',
+            invalidUrl: 'URL complète avec {query} requise',
+            urlOk: 'Substitution de la requête activée.',
+            urlEmptyHint: 'Vide — l\'onglet mène où il menait.',
+            exportHint: 'Copiez ce JSON en lieu sûr.',
+            importHint: 'Collez le JSON produit par l\'export.',
+            notJson: 'Ce n\'est pas du JSON',
+            notObject: 'Objet JSON attendu',
+            schemaBad: 'Refusé : version de schéma inconnue',
+            toggleHide: 'Afficher/masquer l’onglet',
+            trayHide: 'Masquer cet onglet',
+            trayShow: 'Afficher cet onglet',
+            searchIn: 'Rechercher un onglet…',
+            statusNone: 'par défaut',
+            removeWrap: 'Supprimer le bouton CSST',
         },
         es: {
             title: 'Pestañas', close: 'Cerrar', hide: 'Ocultar', show: 'Mostrar',
@@ -647,6 +817,43 @@
             presetPlaceholder: '— preajuste —', original: 'Original',
             namePlaceholder: 'Nombre', urlPlaceholder: 'https://…?q={query}', del: 'Eliminar',
             gearTitle: 'Personalizar pestañas', trayLabel: 'Acciones rápidas',
+            engineWord: 'motor',
+            export: 'Exportar',
+            import: 'Importar',
+            exportTitle: 'Exportar ajustes',
+            importTitle: 'Importar ajustes',
+            copiedFail: 'No se pudo copiar',
+            statusSaved: 'Guardado',
+            presetField: 'Servicio rápido',
+            tabHiddenMsg: 'Pestaña oculta',
+            tabShownMsg: 'Pestaña mostrada',
+            resetDone: 'Ajustes restablecidos',
+            importOk: 'Ajustes importados',
+            importBad: 'Archivo inválido: se esperaba una configuración CSST',
+            dragHint: 'Arrastra para reordenar',
+            badgeTitle: 'pestañas ocultas',
+            expand: 'Expandir',
+            collapse: 'Contraer',
+            tabsWord: 'pestañas',
+            hiddenWord: 'ocultas',
+            allVisible: 'todas visibles',
+            removeButton: 'Quitar botón CSST',
+            langChanged: 'Idioma de la interfaz cambiado',
+            orderMoved: 'Pestaña movida',
+            invalidUrl: 'Se necesita una URL completa con {query}',
+            urlOk: 'Sustitución de consulta activada.',
+            urlEmptyHint: 'Vacío — la pestaña lleva donde llevaba.',
+            exportHint: 'Copia este JSON en un lugar seguro.',
+            importHint: 'Pega el JSON generado al exportar.',
+            notJson: 'Eso no es JSON',
+            notObject: 'Se esperaba un objeto JSON',
+            schemaBad: 'Rechazado: versión de esquema desconocida',
+            toggleHide: 'Mostrar/ocultar pestaña',
+            trayHide: 'Ocultar esta pestaña',
+            trayShow: 'Mostrar esta pestaña',
+            searchIn: 'Buscar pestaña…',
+            statusNone: 'por defecto',
+            removeWrap: 'Quitar botón CSST',
         },
         pt: {
             title: 'Abas', close: 'Fechar', hide: 'Ocultar', show: 'Mostrar',
@@ -667,6 +874,43 @@
             presetPlaceholder: '— predefinição —', original: 'Original',
             namePlaceholder: 'Nome', urlPlaceholder: 'https://…?q={query}', del: 'Excluir',
             gearTitle: 'Personalizar abas', trayLabel: 'Ações rápidas',
+            engineWord: 'motor',
+            export: 'Exportar',
+            import: 'Importar',
+            exportTitle: 'Exportar configurações',
+            importTitle: 'Importar configurações',
+            copiedFail: 'Não foi possível copiar',
+            statusSaved: 'Salvo',
+            presetField: 'Serviço rápido',
+            tabHiddenMsg: 'Aba oculta',
+            tabShownMsg: 'Aba mostrada',
+            resetDone: 'Configurações redefinidas',
+            importOk: 'Configurações importadas',
+            importBad: 'Arquivo inválido: esperava-se uma configuração CSST',
+            dragHint: 'Arraste para reordenar',
+            badgeTitle: 'abas ocultas',
+            expand: 'Expandir',
+            collapse: 'Recolher',
+            tabsWord: 'abas',
+            hiddenWord: 'ocultas',
+            allVisible: 'todas visíveis',
+            removeButton: 'Remover botão CSST',
+            langChanged: 'Idioma da interface alterado',
+            orderMoved: 'Aba movida',
+            invalidUrl: 'É preciso uma URL completa com {query}',
+            urlOk: 'Substituição da consulta ativa.',
+            urlEmptyHint: 'Vazio — a aba leva aonde levava.',
+            exportHint: 'Copie este JSON para um lugar seguro.',
+            importHint: 'Cole o JSON gerado na exportação.',
+            notJson: 'Isso não é JSON',
+            notObject: 'Esperava-se um objeto JSON',
+            schemaBad: 'Rejeitado: versão de esquema desconhecida',
+            toggleHide: 'Mostrar/ocultar aba',
+            trayHide: 'Ocultar esta aba',
+            trayShow: 'Mostrar esta aba',
+            searchIn: 'Buscar aba…',
+            statusNone: 'padrão',
+            removeWrap: 'Remover botão CSST',
         },
         tr: {
             title: 'Sekmeler', close: 'Kapat', hide: 'Gizle', show: 'Göster',
@@ -687,6 +931,43 @@
             presetPlaceholder: '— seçin —', original: 'Orijinal',
             namePlaceholder: 'Ad', urlPlaceholder: 'https://…?q={query}', del: 'Sil',
             gearTitle: 'Sekmeleri özelleştir', trayLabel: 'Hızlı işlemler',
+            engineWord: 'motor',
+            export: 'Dışa aktar',
+            import: 'İçe aktar',
+            exportTitle: 'Ayarları dışa aktar',
+            importTitle: 'Ayarları içe aktar',
+            copiedFail: 'Kopyalanamadı',
+            statusSaved: 'Kaydedildi',
+            presetField: 'Hızlı servis',
+            tabHiddenMsg: 'Sekme gizlendi',
+            tabShownMsg: 'Sekme gösterildi',
+            resetDone: 'Ayarlar sıfırlandı',
+            importOk: 'Ayarlar içe aktarıldı',
+            importBad: 'Geçersiz dosya: CSST yapılandırması bekleniyordu',
+            dragHint: 'Sıralamak için sürükleyin',
+            badgeTitle: 'gizli sekme',
+            expand: 'Genişlet',
+            collapse: 'Daralt',
+            tabsWord: 'sekme',
+            hiddenWord: 'gizli',
+            allVisible: 'hepsi görünür',
+            removeButton: 'CSST düğmesini kaldır',
+            langChanged: 'Arayüz dili değiştirildi',
+            orderMoved: 'Sekme taşındı',
+            invalidUrl: '{query} içeren tam URL gerekli',
+            urlOk: 'Sorgu yerine koyma açık.',
+            urlEmptyHint: 'Boş — sekme eskisi gibi açılır.',
+            exportHint: 'Bu JSON’u güvenli bir yere kopyalayın.',
+            importHint: 'Dışa aktarmayla üretilen JSON’u yapıştırın.',
+            notJson: 'Bu JSON değil',
+            notObject: 'JSON nesnesi bekleniyordu',
+            schemaBad: 'Reddedildi: bilinmeyen şema sürümü',
+            toggleHide: 'Sekmeyi göster/gizle',
+            trayHide: 'Bu sekmeyi gizle',
+            trayShow: 'Bu sekmeyi göster',
+            searchIn: 'Sekme ara…',
+            statusNone: 'varsayılan',
+            removeWrap: 'CSST düğmesini kaldır',
         },
         it: {
             title: 'Schede', close: 'Chiudi', hide: 'Nascondi', show: 'Mostra',
@@ -707,6 +988,43 @@
             presetPlaceholder: '— preset —', original: 'Originale',
             namePlaceholder: 'Nome', urlPlaceholder: 'https://…?q={query}', del: 'Elimina',
             gearTitle: 'Personalizza schede', trayLabel: 'Azioni rapide',
+            engineWord: 'motore',
+            export: 'Esporta',
+            import: 'Importa',
+            exportTitle: 'Esporta impostazioni',
+            importTitle: 'Importa impostazioni',
+            copiedFail: 'Copia non riuscita',
+            statusSaved: 'Salvato',
+            presetField: 'Servizio rapido',
+            tabHiddenMsg: 'Scheda nascosta',
+            tabShownMsg: 'Scheda mostrata',
+            resetDone: 'Impostazioni reimpostate',
+            importOk: 'Impostazioni importate',
+            importBad: 'File non valido: attesa una configurazione CSST',
+            dragHint: 'Trascina per riordinare',
+            badgeTitle: 'schede nascoste',
+            expand: 'Espandi',
+            collapse: 'Comprimi',
+            tabsWord: 'schede',
+            hiddenWord: 'nascoste',
+            allVisible: 'tutte visibili',
+            removeButton: 'Rimuovi pulsante CSST',
+            langChanged: 'Lingua dell\'interfaccia cambiata',
+            orderMoved: 'Scheda spostata',
+            invalidUrl: 'Serve un URL completo con {query}',
+            urlOk: 'Sostituzione della query attiva.',
+            urlEmptyHint: 'Vuoto — la scheda porta dove portava.',
+            exportHint: 'Copia questo JSON in un posto sicuro.',
+            importHint: 'Incolla il JSON prodotto dall\'esportazione.',
+            notJson: 'Non è JSON',
+            notObject: 'Atteso un oggetto JSON',
+            schemaBad: 'Rifiutato: versione schema sconosciuta',
+            toggleHide: 'Mostra/nascondi scheda',
+            trayHide: 'Nascondi questa scheda',
+            trayShow: 'Mostra questa scheda',
+            searchIn: 'Cerca scheda…',
+            statusNone: 'predefinito',
+            removeWrap: 'Rimuovi pulsante CSST',
         },
         pl: {
             title: 'Karty', close: 'Zamknij', hide: 'Ukryj', show: 'Pokaż',
@@ -727,6 +1045,43 @@
             presetPlaceholder: '— wybierz —', original: 'Oryginał',
             namePlaceholder: 'Nazwa', urlPlaceholder: 'https://…?q={query}', del: 'Usuń',
             gearTitle: 'Dostosuj karty', trayLabel: 'Szybkie akcje',
+            engineWord: 'silnik',
+            export: 'Eksportuj',
+            import: 'Importuj',
+            exportTitle: 'Eksportuj ustawienia',
+            importTitle: 'Importuj ustawienia',
+            copiedFail: 'Nie udało się skopiować',
+            statusSaved: 'Zapisano',
+            presetField: 'Szybka usługa',
+            tabHiddenMsg: 'Kartę ukryto',
+            tabShownMsg: 'Kartę pokazano',
+            resetDone: 'Ustawienia zresetowane',
+            importOk: 'Ustawienia zaimportowane',
+            importBad: 'Zły plik: oczekiwano konfiguracji CSST',
+            dragHint: 'Przeciągnij, aby zmienić kolejność',
+            badgeTitle: 'ukrytych kart',
+            expand: 'Rozwiń',
+            collapse: 'Zwiń',
+            tabsWord: 'kart',
+            hiddenWord: 'ukryto',
+            allVisible: 'wszystkie widoczne',
+            removeButton: 'Usuń przycisk CSST',
+            langChanged: 'Zmieniono język interfejsu',
+            orderMoved: 'Kartę przeniesiono',
+            invalidUrl: 'Potrzebny pełny URL z {query}',
+            urlOk: 'Podstawianie zapytania włączone.',
+            urlEmptyHint: 'Puste — karta prowadzi tam, gdzie dotąd.',
+            exportHint: 'Skopiuj ten JSON w bezpieczne miejsce.',
+            importHint: 'Wklej JSON wygenerowany przy eksporcie.',
+            notJson: 'To nie jest JSON',
+            notObject: 'Oczekiwano obiektu JSON',
+            schemaBad: 'Odrzucono: nieznana wersja schematu',
+            toggleHide: 'Pokaż/ukryj kartę',
+            trayHide: 'Ukryj tę kartę',
+            trayShow: 'Pokaż tę kartę',
+            searchIn: 'Szukaj karty…',
+            statusNone: 'domyślne',
+            removeWrap: 'Usuń przycisk CSST',
         },
         zh: {
             title: '搜索标签页', close: '关闭', hide: '隐藏', show: '显示',
@@ -747,6 +1102,43 @@
             presetPlaceholder: '— 选择预设 —', original: '原始',
             namePlaceholder: '名称', urlPlaceholder: 'https://…?q={query}', del: '删除',
             gearTitle: '自定义搜索标签页', trayLabel: '快捷操作',
+            engineWord: '引擎',
+            export: '导出',
+            import: '导入',
+            exportTitle: '导出设置',
+            importTitle: '导入设置',
+            copiedFail: '复制失败',
+            statusSaved: '已保存',
+            presetField: '快捷服务',
+            tabHiddenMsg: '标签页已隐藏',
+            tabShownMsg: '标签页已显示',
+            resetDone: '设置已重置',
+            importOk: '设置已导入',
+            importBad: '文件无效：需要 CSST 配置对象',
+            dragHint: '拖动以重新排序',
+            badgeTitle: '个隐藏标签页',
+            expand: '展开',
+            collapse: '收起',
+            tabsWord: '个标签页',
+            hiddenWord: '已隐藏',
+            allVisible: '全部可见',
+            removeButton: '移除 CSST 按钮',
+            langChanged: '界面语言已更改',
+            orderMoved: '标签页已移动',
+            invalidUrl: '需要包含 {query} 的完整 URL',
+            urlOk: '已启用查询替换。',
+            urlEmptyHint: '留空 — 标签页保持原有跳转。',
+            exportHint: '将此 JSON 复制到安全的地方。',
+            importHint: '粘贴导出得到的 JSON。',
+            notJson: '这不是 JSON',
+            notObject: '需要 JSON 对象',
+            schemaBad: '已拒绝：未知的架构版本',
+            toggleHide: '显示/隐藏标签页',
+            trayHide: '隐藏此标签页',
+            trayShow: '显示此标签页',
+            searchIn: '搜索标签页…',
+            statusNone: '默认',
+            removeWrap: '移除 CSST 按钮',
         },
         ja: {
             title: '検索タブ', close: '閉じる', hide: '非表示', show: '表示',
@@ -767,6 +1159,43 @@
             presetPlaceholder: '— プリセットを選択 —', original: '元のタブ',
             namePlaceholder: '名前', urlPlaceholder: 'https://…?q={query}', del: '削除',
             gearTitle: '検索タブをカスタマイズ', trayLabel: 'クイック操作',
+            engineWord: 'エンジン',
+            export: 'エクスポート',
+            import: 'インポート',
+            exportTitle: '設定をエクスポート',
+            importTitle: '設定をインポート',
+            copiedFail: 'コピーできませんでした',
+            statusSaved: '保存しました',
+            presetField: 'サービスを選択',
+            tabHiddenMsg: 'タブを非表示にしました',
+            tabShownMsg: 'タブを表示しました',
+            resetDone: '設定をリセットしました',
+            importOk: '設定をインポートしました',
+            importBad: '無効なファイル: CSST 設定が必要です',
+            dragHint: 'ドラッグして並べ替え',
+            badgeTitle: '個の非表示タブ',
+            expand: '展開',
+            collapse: '折りたたむ',
+            tabsWord: 'タブ',
+            hiddenWord: '非表示',
+            allVisible: 'すべて表示',
+            removeButton: 'CSST ボタンを削除',
+            langChanged: '表示言語を変更しました',
+            orderMoved: 'タブを移動しました',
+            invalidUrl: '{query} を含む完全な URL が必要です',
+            urlOk: '検索語の置換が有効です。',
+            urlEmptyHint: '空 — タブは元のリンク先のままです。',
+            exportHint: 'この JSON を安全な場所にコピーしてください。',
+            importHint: 'エクスポートした JSON を貼り付けてください。',
+            notJson: 'JSON ではありません',
+            notObject: 'JSON オブジェクトが必要です',
+            schemaBad: '拒否: 不明なスキーマバージョン',
+            toggleHide: 'タブを表示/非表示',
+            trayHide: 'このタブを隠す',
+            trayShow: 'このタブを表示',
+            searchIn: 'タブを検索…',
+            statusNone: '既定',
+            removeWrap: 'CSST ボタンを削除',
         },
         ko: {
             title: '검색 탭', close: '닫기', hide: '숨기기', show: '표시',
@@ -787,6 +1216,43 @@
             presetPlaceholder: '— 프리셋 선택 —', original: '원본',
             namePlaceholder: '이름', urlPlaceholder: 'https://…?q={query}', del: '삭제',
             gearTitle: '검색 탭 설정', trayLabel: '빠른 작업',
+            engineWord: '엔진',
+            export: '내보내기',
+            import: '가져오기',
+            exportTitle: '설정 내보내기',
+            importTitle: '설정 가져오기',
+            copiedFail: '복사하지 못했습니다',
+            statusSaved: '저장됨',
+            presetField: '빠른 서비스',
+            tabHiddenMsg: '탭을 숨겼습니다',
+            tabShownMsg: '탭을 표시했습니다',
+            resetDone: '설정을 초기화했습니다',
+            importOk: '설정을 가져왔습니다',
+            importBad: '잘못된 파일: CSST 구성이 필요합니다',
+            dragHint: '끌어서 순서 변경',
+            badgeTitle: '개의 숨긴 탭',
+            expand: '펼치기',
+            collapse: '접기',
+            tabsWord: '개 탭',
+            hiddenWord: '숨김',
+            allVisible: '모두 표시',
+            removeButton: 'CSST 버튼 제거',
+            langChanged: '인터페이스 언어를 변경했습니다',
+            orderMoved: '탭을 이동했습니다',
+            invalidUrl: '{query}가 포함된 전체 URL이 필요합니다',
+            urlOk: '검색어 치환이 켜졌습니다.',
+            urlEmptyHint: '비움 — 탭은 원래대로 이동합니다.',
+            exportHint: '이 JSON을 안전한 곳에 복사하세요.',
+            importHint: '내보낸 JSON을 붙여넣으세요.',
+            notJson: 'JSON이 아닙니다',
+            notObject: 'JSON 객체가 필요합니다',
+            schemaBad: '거부됨: 알 수 없는 스키마 버전',
+            toggleHide: '탭 표시/숨기기',
+            trayHide: '이 탭 숨기기',
+            trayShow: '이 탭 표시',
+            searchIn: '탭 검색…',
+            statusNone: '기본',
+            removeWrap: 'CSST 버튼 제거',
         },
         hi: {
             title: 'खोज टैब', close: 'बंद करें', hide: 'छिपाएँ', show: 'दिखाएँ',
@@ -807,6 +1273,43 @@
             presetPlaceholder: '— प्रीसेट चुनें —', original: 'मूल',
             namePlaceholder: 'नाम', urlPlaceholder: 'https://…?q={query}', del: 'हटाएँ',
             gearTitle: 'खोज टैब बदलें', trayLabel: 'त्वरित क्रियाएँ',
+            engineWord: 'इंजन',
+            export: 'निर्यात',
+            import: 'आयात',
+            exportTitle: 'सेटिंग्स निर्यात करें',
+            importTitle: 'सेटिंग्स आयात करें',
+            copiedFail: 'कॉपी नहीं हो सका',
+            statusSaved: 'सहेजा गया',
+            presetField: 'त्वरित सेवा',
+            tabHiddenMsg: 'टैब छिपाया गया',
+            tabShownMsg: 'टैब दिखाया गया',
+            resetDone: 'सेटिंग्स रीसेट हो गईं',
+            importOk: 'सेटिंग्स आयात हो गईं',
+            importBad: 'गलत फ़ाइल: CSST कॉन्फ़िग चाहिए',
+            dragHint: 'क्रम बदलने के लिए खींचें',
+            badgeTitle: 'छिपे टैब',
+            expand: 'खोलें',
+            collapse: 'समेटें',
+            tabsWord: 'टैब',
+            hiddenWord: 'छिपे',
+            allVisible: 'सभी दिख रहे',
+            removeButton: 'CSST बटन हटाएँ',
+            langChanged: 'इंटरफ़ेस भाषा बदली',
+            orderMoved: 'टैब खिसका',
+            invalidUrl: '{query} के साथ पूरा URL चाहिए',
+            urlOk: 'क्वेरी प्रतिस्थापन चालू है।',
+            urlEmptyHint: 'खाली — टैब पहले जैसे ही जाएगा।',
+            exportHint: 'इस JSON को सुरक्षित जगह कॉपी करें।',
+            importHint: 'निर्यात किया गया JSON पेस्ट करें।',
+            notJson: 'यह JSON नहीं है',
+            notObject: 'JSON ऑब्जेक्ट चाहिए',
+            schemaBad: 'अस्वीकृत: अज्ञात स्कीमा संस्करण',
+            toggleHide: 'टैब दिखाएँ/छिपाएँ',
+            trayHide: 'यह टैब छिपाएँ',
+            trayShow: 'यह टैब दिखाएँ',
+            searchIn: 'टैब खोजें…',
+            statusNone: 'डिफ़ॉल्ट',
+            removeWrap: 'CSST बटन हटाएँ',
         },
         ar: {
             title: 'تبويبات البحث', close: 'إغلاق', hide: 'إخفاء', show: 'إظهار',
@@ -827,6 +1330,43 @@
             presetPlaceholder: '— اختر إعدادًا —', original: 'الأصلي',
             namePlaceholder: 'الاسم', urlPlaceholder: 'https://…?q={query}', del: 'حذف',
             gearTitle: 'تخصيص تبويبات البحث', trayLabel: 'إجراءات سريعة',
+            engineWord: 'محرك',
+            export: 'تصدير',
+            import: 'استيراد',
+            exportTitle: 'تصدير الإعدادات',
+            importTitle: 'استيراد الإعدادات',
+            copiedFail: 'تعذّر النسخ',
+            statusSaved: 'تم الحفظ',
+            presetField: 'خدمة سريعة',
+            tabHiddenMsg: 'تم إخفاء التبويب',
+            tabShownMsg: 'تم إظهار التبويب',
+            resetDone: 'تمت إعادة تعيين الإعدادات',
+            importOk: 'تم استيراد الإعدادات',
+            importBad: 'ملف غير صالح: مطلوب إعداد CSST',
+            dragHint: 'اسحب لإعادة الترتيب',
+            badgeTitle: 'تبويبات مخفية',
+            expand: 'توسيع',
+            collapse: 'طي',
+            tabsWord: 'تبويبات',
+            hiddenWord: 'مخفية',
+            allVisible: 'الكل مرئي',
+            removeButton: 'إزالة زر CSST',
+            langChanged: 'تم تغيير لغة الواجهة',
+            orderMoved: 'تم نقل التبويب',
+            invalidUrl: 'مطلوب رابط كامل يحتوي على {query}',
+            urlOk: 'استبدال الاستعلام مُفعَّل.',
+            urlEmptyHint: 'فارغ — يبقى التبويب كما كان.',
+            exportHint: 'انسخ هذا الـ JSON إلى مكان آمن.',
+            importHint: 'ألصق الـ JSON الناتج عن التصدير.',
+            notJson: 'هذا ليس JSON',
+            notObject: 'كان متوقعًا كائن JSON',
+            schemaBad: 'مرفوض: إصدار مخطط غير معروف',
+            toggleHide: 'إظهار/إخفاء التبويب',
+            trayHide: 'إخفاء هذا التبويب',
+            trayShow: 'إظهار هذا التبويب',
+            searchIn: 'ابحث عن تبويب…',
+            statusNone: 'افتراضي',
+            removeWrap: 'إزالة زر CSST',
         },
     };
 
@@ -865,7 +1405,7 @@
     function t(key) { const v = L()[key]; return v != null ? v : (I18N.en[key] != null ? I18N.en[key] : key); }
 
     /* ═══════════════════════════════════════════════════════════════════════
-       3. КОНФИГ, СХЕМА И ХРАНИЛИЩЕ (IDEAS.md №16, №18)
+       3. КОНФИГ, СХЕМА И ХРАНИЛИЩЕ
        ═══════════════════════════════════════════════════════════════════════ */
 
     const SCHEMA_VERSION = 1;
@@ -902,7 +1442,7 @@
         try { GM_setValue(UI_STORAGE_KEY, JSON.stringify({ v: SCHEMA_VERSION, lang: prefs.lang || 'auto' })); } catch (_) {}
     }
 
-    /* Валидация конфига по явной схеме (IDEAS.md №18).
+    /* Валидация конфига по явной схеме.
        Возвращает { ok, cfg, error }. Никогда не бросает. */
     function validateConfig(raw, opts) {
         const strict = !!(opts && opts.strict);
@@ -1165,7 +1705,6 @@
 
     /* ═══════════════════════════════════════════════════════════════════════
        7. ПОИСК КОНТЕЙНЕРА: КАСКАД + КЕШ + ПРОВЕРКА ФОРМЫ СТРАНИЦЫ
-          (IDEAS.md №3, №15, №22)
        ═══════════════════════════════════════════════════════════════════════ */
 
     let _navCache     = null;   // { el, strategy } на один проход
@@ -1186,9 +1725,38 @@
             || el.hasAttribute('data-usc-hook');
     }
 
+    /* Startpage описывает вкладки как <button> внутри GET-формы
+       <form action="/sp/search"> со скрытыми <input name="cat" value="images">
+       и <input name="query" value="…">. Ссылки там нет вообще, поэтому
+       собираем псевдо-URL из action и hidden-полей и отдаём его тому же
+       declarative-классификатору — карта движка уже понимает cat/query. */
+    function formUrlOf(el) {
+        if (!el || el.tagName !== 'BUTTON') return null;
+        const form = el.closest && el.closest('form[action]');
+        if (!form) return null;
+        const action = form.getAttribute('action') || '';
+        if (!/search/i.test(action)) return null;
+        const sp = new URLSearchParams();
+        form.querySelectorAll('input[type="hidden"][name]').forEach(inp => {
+            const name = inp.getAttribute('name');
+            const val = inp.getAttribute('value');
+            if (name && val != null) sp.set(name, val);
+        });
+        // Формы настроек и прочие служебные тоже несут query — отсекаем.
+        const hasQuery = sp.has(ENGINE.queryParam) || sp.has('q') || sp.has('query');
+        if (!hasQuery) return null;
+        try { return new URL(action + '?' + sp.toString(), location.origin); }
+        catch (_) { return null; }
+    }
+
     function classifyEl(el) {
         if (!el || isOwnEl(el)) return null;
-        return el.getAttribute('data-usc-key') || ENGINE.classify(el);
+        const forced = el.getAttribute('data-usc-key');
+        if (forced) return forced;
+        const direct = ENGINE.classify(el);
+        if (direct) return direct;
+        const alt = formUrlOf(el);
+        return alt ? ENGINE.classify(el, alt) : null;
     }
 
     function isVisible(el) {
@@ -1197,7 +1765,7 @@
 
     function classifiedLinks(visibleOnly) {
         const out = [];
-        qsa('a[href], [data-usc-key]').forEach(el => {
+        qsa(TAB_SELECTOR).forEach(el => {
             if (!classifyEl(el)) return;
             if (visibleOnly && !isVisible(el)) return;
             out.push(el);
@@ -1230,68 +1798,205 @@
         return best;
     }
 
-    // Универсальная эвристика без знания движка: ищем nav-подобный узел,
-    // в котором максимум коротких ссылок ведут на тот же домен.
-    function densestGenericNav() {
-        const host = location.hostname.replace(/^www\./, '');
-        const cands = qsa('nav, [role="navigation"], [role="tablist"], header ul, ul, div[role="list"]');
+    /* ── Проверка формы кандидата ──────────────────────────────────────
+
+       Одно правило для ВСЕХ стратегий: промах не бросает исключение и не
+       вешает кнопку в случайный <ul>. Кандидат обязан:
+
+         • лежать у верхней кромки страницы (строка вкладок не в подвале и не
+           в мега-меню, свёрнутом за гамбургером) и быть видимым;
+         • не быть автокомплитом поисковой строки и не быть меню;
+         • содержать минимум две «вкладочные» единицы своего домена.
+
+       Именно этой проверки не хватало: движковый селектор брался по первому
+       совпадению без валидации, поэтому неверный селектор молча отдавал
+       чужой узел вместо того, чтобы уйти по каскаду дальше. */
+
+    const NAV_HOST = location.hostname.replace(/^www\./, '');
+
+    function tabText(el) {
+        const txt = (el.textContent || '').replace(/\s+/g, ' ').trim()
+                 || (el.getAttribute('aria-label') || '').trim();
+        return txt.length <= 40 ? txt : '';
+    }
+
+    /* Только самые внутренние «вкладочные» узлы: <div role="tab"><a href> —
+       это ОДНА вкладка, а не две. */
+    function leafTabNodes(root) {
+        const all = qsa(TAB_SELECTOR, root).filter(n => isTabNode(n));
+        return all.filter(n => !all.some(other => other !== n && n.contains(other)));
+    }
+
+    // «Вкладочные» единицы внутри узла: ссылки ИЛИ кнопки-ссылки своего домена.
+    function navLinksIn(root) {
+        const out = [];
+        leafTabNodes(root).forEach(node => {
+            if (isOwnEl(node) || node.closest('[data-usc-inject-wrap]')) return;
+            if (!tabText(node)) return;
+            const u = urlOf(node) || formUrlOf(node);
+            if (!u) return;
+            if (u.hostname.replace(/^www\./, '') !== NAV_HOST) return;
+            out.push({ node, url: u });
+        });
+        return out;
+    }
+
+    // Признак раздела: путь + «категория», но без самого запроса.
+    function sectionOf(url) {
+        const sp = url.searchParams;
+        const section = sp.get('cat') || sp.get('source') || sp.get('t')
+                     || sp.get('type') || sp.get('scope') || '';
+        return url.pathname.replace(/\/+$/, '') + '|' + section;
+    }
+
+    function carriesQuery(url) {
+        const sp = url.searchParams;
+        return sp.has(ENGINE.queryParam) || sp.has('q') || sp.has('query') || sp.has('text');
+    }
+
+    function isAutocomplete(el) {
+        const role = el.getAttribute('role');
+        if (role === 'menu' || role === 'listbox') return true;
+        if (role === 'menubar') return false;      // Ecosia: это и есть строка вкладок
+        if (el.closest('[role="listbox"], datalist')) return true;
+        if (el.querySelector('[role="listbox"], datalist')) return true;
+        return false;
+    }
+
+    // Строка вкладок живёт у верхней кромки. Порог мягкий (половина экрана),
+    // чтобы не ломать движки с высоким верхним блоком.
+    function nearTop(el) {
+        let r = null;
+        try { r = el.getBoundingClientRect(); } catch (_) { return true; }
+        if (!r) return true;
+        if (!r.width && !r.height) return false;   // свёрнутое меню, подвал
+        const limit = Math.max(320, (window.innerHeight || 800) * 0.5);
+        return r.top < limit && r.bottom > -40;
+    }
+
+    function plausibleNav(el, need) {
+        if (!el || el.nodeType !== 1) return false;
+        if (isOwnEl(el) || el.closest('#usc-ui-host')) return false;
+        if (isAutocomplete(el)) return false;
+        if (navLinksIn(el).length < (need || 2)) return false;
+        return nearTop(el);
+    }
+
+    // Первый селектор, дающий ПРАВДОПОДОБНЫЙ контейнер, а не просто узел.
+    function firstValid(selectors) {
+        if (!selectors) return null;
+        for (let i = 0; i < selectors.length; i++) {
+            let el = null;
+            try { el = document.querySelector(selectors[i]); } catch (_) { continue; }
+            if (el && plausibleNav(el, 2)) return { el, selector: selectors[i] };
+        }
+        return null;
+    }
+
+    /* Универсальный фолбэк без знания движка: узел, внутри которого несколько
+       РАЗНЫХ разделов своего домена несут один и тот же поисковый запрос — это
+       и есть строка вкладок. Требуем ≥2 разных признака раздела И запрос в
+       каждой из них, поэтому случайный <ul> со ссылками (футер, сайдбар) не
+       проходит: у его ссылок запроса нет. */
+    function genericTabStrip() {
+        const cands = qsa('nav, [role="navigation"], [role="tablist"], [role="menubar"], '
+                        + 'header ul, ul, div[role="list"], div[role="menubar"]');
         let best = null, bestScore = 0;
         for (const el of cands) {
-            if (isOwnEl(el) || el.closest('#usc-ui-host')) continue;
-            let n = 0;
-            for (const a of el.children || []) {
-                const link = a.tagName === 'A' ? a : (a.querySelector ? a.querySelector('a[href]') : null);
-                if (!link) continue;
-                const txt = (link.textContent || '').replace(/\s+/g, ' ').trim();
-                if (!txt || txt.length > 24) continue;
-                let u = null;
-                try { u = new URL(link.getAttribute('href') || '', location.origin); } catch (_) { continue; }
-                if (u.hostname.replace(/^www\./, '') !== host) continue;
-                n++;
-            }
-            if (n < 3) continue;
-            const score = n * 100 - Math.min(99, el.getElementsByTagName('*').length / 4);
+            if (!plausibleNav(el, 2)) continue;
+            const sections = new Set();
+            let withQuery = 0;
+            navLinksIn(el).forEach(l => {
+                sections.add(sectionOf(l.url));
+                if (carriesQuery(l.url)) withQuery++;
+            });
+            if (sections.size < 2 || withQuery < 2) continue;
+            const score = sections.size * 100 + withQuery * 10
+                        - Math.min(60, el.getElementsByTagName('*').length / 6);
             if (score > bestScore) { best = el; bestScore = score; }
         }
         return best;
     }
 
-    // Каскад стратегий. Возвращает { el, strategy } или null.
+    // Каскад стратегий. Возвращает { el, strategy, selector } или null.
     function resolveNavContainer() {
         const nav = ENGINE.nav || {};
 
-        if (nav.containers && nav.containers.length) {
-            const el = firstMatch(nav.containers);
-            if (el && !isOwnEl(el)) return { el, strategy: 'selectors' };
-        }
+        // 1. Движковые селекторы — но только если контейнер правдоподобен.
+        const hit = firstValid(nav.containers);
+        if (hit) return { el: hit.el, strategy: 'selectors', selector: hit.selector };
 
+        // 2. Стабильный якорь (Qwant: родитель ссылки-вкладки).
         if (nav.containerFrom) {
-            const anchor = firstMatch([nav.containerFrom]);
-            if (anchor && anchor.parentElement && !isOwnEl(anchor.parentElement)) {
-                return { el: anchor.parentElement, strategy: 'containerFrom' };
+            let anchor = null;
+            try { anchor = document.querySelector(nav.containerFrom); } catch (_) {}
+            const parent = anchor && anchor.parentElement;
+            if (plausibleNav(parent, 2)) {
+                return { el: parent, strategy: 'containerFrom', selector: nav.containerFrom };
             }
         }
 
+        // 3. Семантика без привязки к движку: nav с говорящим aria-label,
+        //    затем nav внутри header, затем любой nav.
+        const sem = firstValid(['nav[aria-label*="search" i]', 'nav[aria-label*="tab" i]',
+                                'header nav', 'nav']);
+        if (sem) return { el: sem.el, strategy: 'semantic', selector: sem.selector };
+
+        // 4. Самый густой кластер уже классифицированных ссылок.
         const byKeys = densestFromClassified(classifiedLinks(true))
                     || densestFromClassified(classifiedLinks(false));
-        if (byKeys) return { el: byKeys, strategy: 'classified' };
+        if (byKeys && plausibleNav(byKeys, 2)) return { el: byKeys, strategy: 'classified' };
 
-        // №3: самая рискованная эвристика разрешена только пока формат страницы
-        // ещё похож на поддерживаемый. После трёх промахов подряд считаем вёрстку
-        // неподдерживаемой и НЕ пытаемся вставить кнопку в случайное место.
-        // Раз в 20 проходов даём осторожную повторную попытку — вёрстка могла
-        // догрузиться.
+        // 5. Универсальный фолбэк по форме строки вкладок. Самая рискованная
+        //    стратегия: разрешена, пока формат страницы ещё похож на
+        //    поддерживаемый. После трёх промахов подряд считаем вёрстку
+        //    неподдерживаемой и НЕ вставляем кнопку в случайное место.
+        //    Раз в 20 проходов — осторожная повторная попытка.
         if (!_layoutUnsupported || (_navFailures % 20) === 0) {
-            const generic = densestGenericNav();
-            if (generic) return { el: generic, strategy: 'generic' };
+            const generic = genericTabStrip();
+            if (generic) return { el: generic, strategy: 'generic', selector: null };
         }
 
         return null;
     }
 
-    // Кеш на проход (№15): applyConfig вызывает эту функцию многократно.
+    // Кеш на проход: applyConfig вызывает эту функцию многократно.
     let _navPass = 0;
     function beginNavPass() { _navPass++; _navCache = null; }
+
+    /* Наблюдаемость каскада. Пишем только в память страницы: никакого DOM,
+       никакой сети, ничего не сохраняется. Нужно ровно для того, чтобы
+       следующий прогон не гадал, какая стратегия выиграла. */
+    function describeContainer(el) {
+        if (!el) return null;
+        const info = { tag: el.tagName ? el.tagName.toLowerCase() : '?' };
+        if (el.id) info.id = el.id;
+        const cls = (el.getAttribute && el.getAttribute('class') || '').trim();
+        if (cls) info.class = cls.slice(0, 120);
+        try {
+            const r = el.getBoundingClientRect();
+            info.top = Math.round(r.top);
+            info.height = Math.round(r.height);
+        } catch (_) {}
+        info.links = navLinksIn(el).length;
+        return info;
+    }
+
+    function publishDiag(strategy, el, selector) {
+        try {
+            window.__csstDiag = {
+                version: SCRIPT_VERSION,
+                engine: ENGINE.key,
+                engineName: ENGINE.name,
+                strategy: strategy || 'none',
+                selector: selector || null,
+                container: describeContainer(el),
+                tabs: el ? tabEls(el).length : 0,
+                failures: _navFailures,
+                at: Date.now(),
+            };
+        } catch (_) {}
+    }
 
     function navContainer() {
         if (_navCache && _navCache.pass === _navPass) return _navCache.el;
@@ -1306,6 +2011,7 @@
             if (_navFailures >= 3) _layoutUnsupported = true;
         }
         _navCache = { pass: _navPass, el: res ? res.el : null };
+        publishDiag(res && res.strategy, _navCache.el, res && res.selector);
         return _navCache.el;
     }
 
@@ -1322,7 +2028,9 @@
             'CSST ' + SCRIPT_VERSION,
             'Движок: ' + ENGINE.name + ' (' + location.hostname + ')',
             'Страница: ' + location.pathname + location.search,
-            'Стратегия контейнера: ' + navStrategyName(),
+            'Стратегия контейнера: ' + navStrategyName()
+                + (window.__csstDiag && window.__csstDiag.selector
+                    ? ' ← ' + window.__csstDiag.selector : ''),
             'Вёрстка неподдерживаема: ' + (layoutUnsupported() ? 'да' : 'нет'),
             'Кнопка вставлена: ' + (document.getElementById('usc-gear-btn') ? 'да' : 'нет'),
             'Распознано вкладок: ' + detected.length,
@@ -1347,7 +2055,7 @@
         if (a.hasAttribute('data-usc-key')) return a.getAttribute('data-usc-key');
         const li = a.closest('li[id]');
         if (li && li.id) return 'x:' + li.id.toLowerCase();
-        const u = urlOf(a);
+        const u = urlOf(a) || formUrlOf(a);
         if (u) {
             const interesting = ['udm', 'tbm', 'ia', 'iax', 'iaxm', 'products_mode', 'scope', 'mode', 'm', 'lr', 't', 'cat', 'source', 'type'];
             const parts = [];
@@ -1364,14 +2072,14 @@
         if (isOwnEl(a)) return null;
         const dk = a.getAttribute('data-usc-key');
         if (dk) return dk;
-        const c = ENGINE.classify(a);
+        const c = classifyEl(a);          // ссылка, кнопка-ссылка или форма
         if (c) return c;
         return syntheticKey(a);
     }
 
     function tabEls(container) {
         if (!container) return [];
-        return [...container.querySelectorAll('a')].filter(a => {
+        return leafTabNodes(container).filter(a => {
             if (isOwnEl(a)) return false;
             return !!cleanLabel(a) || a.hasAttribute('data-usc-key');
         });
@@ -1486,7 +2194,7 @@
         link.setAttribute('data-usc-hidden', '1');
         const p = link.parentElement;
         if (p && p !== container && p !== document.body && p !== document.documentElement) {
-            const sib = [...p.querySelectorAll('a')].filter(a => !isOwnEl(a) && cleanLabel(a));
+            const sib = [...p.querySelectorAll(TAB_SELECTOR)].filter(a => !isOwnEl(a) && cleanLabel(a));
             if (sib.length <= 1) {
                 p.style.setProperty('display', 'none', 'important');
                 p.setAttribute('data-usc-wr-hidden', '1');
@@ -1514,7 +2222,7 @@
         link.setAttribute('data-usc-key', key);
         link.setAttribute('data-usc-redirect', redirectUrl);
         link.setAttribute('data-usc-target', resolved);
-        link.href = resolved;
+        if (link.tagName === 'A') link.href = resolved;   // у <button> href нет
         if (!link._uscBound) {
             link.addEventListener('click', function (e) {
                 const tgt = link.getAttribute('data-usc-target');
@@ -1617,11 +2325,17 @@
         } catch (_) {}
     }
 
-    function wrapInjected(inner) {
+    // Обёртка нового узла. styleFromAnchor — скопировать классы с существующей
+    // вкладки, когда классы движка обфусцированы (Qwant).
+    function wrapInjected(inner, styleFromAnchor) {
         const nav = ENGINE.nav || {};
         if (!nav.wrap) return inner;
         const w = document.createElement(nav.wrap);
         if (nav.itemClass) w.className = nav.itemClass;
+        else if (nav.itemFromAnchor && styleFromAnchor) {
+            const cls = styleFromAnchor.getAttribute('class');
+            if (cls) w.setAttribute('class', cls);
+        }
         if (nav.wrapRole)  w.setAttribute('role', nav.wrapRole);
         w.setAttribute('data-usc-inject-wrap', '1');
         w.appendChild(inner);
@@ -1762,7 +2476,8 @@
         return tray;
     }
 
-    function positionTray() {        const tray = document.querySelector('[data-usc-hook="tray"]');
+    function positionTray() {
+        const tray = document.querySelector('[data-usc-hook="tray"]');
         const btn = document.getElementById('usc-gear-btn');
         if (!tray || !btn || tray.hidden) return;
         const r = btn.getBoundingClientRect();
@@ -1845,9 +2560,15 @@
             (wrap || el).remove();
         });
 
+        // Опорный «родной» элемент нужен только движкам с обфусцированными
+        // классами (Qwant): у них копируем стиль существующей вкладки.
+        const styleFrom = (ENGINE.nav && ENGINE.nav.itemFromAnchor)
+            ? (container.querySelector('a[href]') || null)
+            : null;
+
         const q = getQuery();
         (cfg.customTabs || []).forEach(tab => {
-            container.appendChild(wrapInjected(buildCustomAnchor(tab, q)));
+            container.appendChild(wrapInjected(buildCustomAnchor(tab, q), styleFrom));
         });
 
         let gear = document.getElementById('usc-gear-btn');
@@ -1855,7 +2576,7 @@
             const unit = document.createElement('span');
             unit.setAttribute('data-usc-hook', 'trigger');
             unit.appendChild(buildGearButton());
-            container.appendChild(wrapInjected(unit));
+            container.appendChild(wrapInjected(unit, styleFrom));
         } else {
             const unit = gear.parentElement && gear.parentElement.getAttribute('data-usc-hook') === 'trigger'
                 ? gear.parentElement : gear;
@@ -2060,7 +2781,7 @@
     }
 
     /* ═══════════════════════════════════════════════════════════════════════
-       11. ПАНЕЛЬ НАСТРОЕК (A1–A3 + идеи 5, 9, 12, 13, 18, 19, 20)
+       11. ПАНЕЛЬ НАСТРОЕК
 
        Панель живёт в Shadow DOM отдельного хоста. Это защищает её от
        страничных скриптов: Bing ставит MutationObserver («AdPrevention»),
@@ -2186,8 +2907,7 @@
         if (!_panelOpen) return;
         const cfg = getCfg();
         const detected = detectTabs();
-        const filterEl = uiEl('usc-filter');
-        if (filterEl && filterEl.value) { /* фильтр сохраняем */ }
+        // Значение фильтра живёт в DOM и переживает перерисовку строк.
         renderTabRows(cfg, detected);
         renderCustomRows(cfg);
     }
@@ -3343,7 +4063,7 @@
             display: grid; gap: 7px;
             background: var(--bg-2);
         }
-        .usc-opt { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+        .usc-opt { display: flex; align-items: center; gap: 8px; cursor: pointer; min-height: 24px; padding: 2px 0; }
         .usc-opt input[type="checkbox"] { width: 15px; height: 15px; accent-color: ${ACCENT}; flex: 0 0 auto; margin: 0; }
         .usc-opt-body { display: grid; gap: 1px; min-width: 0; flex: 1 1 auto; }
         .usc-opt-name { font-size: 11px; font-weight: 600; color: var(--ink-2); }
@@ -3416,7 +4136,7 @@
         .usc-act:hover { background: #22252c; }
         ` : ''}
 
-        /* ── Узкие экраны: нижний лист + крупные цели (№13) ── */
+        /* ── Узкие экраны: нижний лист + крупные цели ── */
         @media (max-width: 760px) {
             .usc-modal {
                 left: 10px !important; right: 10px !important;
@@ -3424,13 +4144,19 @@
                 width: auto; max-height: min(72vh, 560px) !important;
                 border-radius: 14px;
             }
-            .usc-row { min-height: 46px; padding: 6px 8px; }
-            .usc-act, .usc-del, .usc-iconbtn { width: 34px; height: 34px; min-width: 34px; }
-            .usc-btn { height: 34px; min-height: 34px; }
-            .usc-btn.usc-iconbtn { width: 34px; min-width: 34px; }
-            .usc-filter-inp { height: 36px; }
-            .usc-mini input, .usc-select, .usc-custom input { height: 34px; }
-            .usc-opt input[type="checkbox"] { width: 20px; height: 20px; }
+            /* Цели ≥44×44 px для пальца; иконки визуально того же размера. */
+            .usc-row { min-height: 54px; padding: 6px 6px; }
+            .usc-act { width: 44px; height: 44px; min-width: 44px; }
+            .usc-del { width: 44px; height: 44px; min-width: 44px; }
+            .usc-iconbtn { width: 44px; height: 44px; min-width: 44px; }
+            .usc-btn { height: 40px; min-height: 40px; padding: 0 12px; }
+            .usc-btn.usc-iconbtn { width: 40px; min-width: 40px; }
+            .usc-filter-inp { height: 40px; }
+            .usc-filter-clear { width: 24px; height: 24px; inset-inline-end: 20px; }
+            .usc-mini input, .usc-select, .usc-custom input { height: 40px; }
+            .usc-opt { min-height: 44px; }
+            .usc-opt input[type="checkbox"] { width: 22px; height: 22px; }
+            .usc-chev { transform-origin: center; }
         }
         @media (prefers-reduced-motion: reduce) {
             .usc-modal, .usc-row, .usc-chev, .usc-act { animation-duration: .01ms !important; transition-duration: .01ms !important; }
@@ -3439,7 +4165,7 @@
     }
 
     /* ═══════════════════════════════════════════════════════════════════════
-       13b. АВТООБНОВЛЕНИЕ (активный слой)
+       13. АВТООБНОВЛЕНИЕ (активный слой)
 
        Пассивный слой — @updateURL/@downloadURL в шапке — остаётся как был.
        Здесь добавляется активный: раз в сутки, в простое, скрипт скачивает
@@ -3447,7 +4173,7 @@
        баннером один раз на версию. Любая ошибка гасится молча.
        ═══════════════════════════════════════════════════════════════════════ */
 
-    const SCRIPT_VERSION = '1.3.0';
+    const SCRIPT_VERSION = '1.3.1';
     const UPDATE_URL = 'https://raw.githubusercontent.com/diple-df/CSST-tampermonkey-script/main/csst_tmprmnk.user.js';
     const UPDATE_META_KEY = 'usc_update_meta';
     const UPDATE_CHECK_EVERY = 24 * 60 * 60 * 1000;   // сутки
@@ -3678,7 +4404,7 @@
     }
 
     /* ═══════════════════════════════════════════════════════════════════════
-       13. ИНИЦИАЛИЗАЦИЯ, SPA-ПОДДЕРЖКА, НАБЛЮДАТЕЛЬ (IDEAS.md №14)
+       14. ИНИЦИАЛИЗАЦИЯ, SPA-ПОДДЕРЖКА, НАБЛЮДАТЕЛЬ
        ═══════════════════════════════════════════════════════════════════════ */
 
     let _disabled = false;
@@ -3717,7 +4443,8 @@
     let _quietUntil = 0;
 
     function onMutations(muts) {
-        if (_disabled || _observerArmed) return;
+        if (_disabled) return;
+        if (_observerArmed) { scheduleApply(500); return; }
         if (Date.now() < _quietUntil) return;
 
         if (location.href !== _observedUrl) {
@@ -3735,8 +4462,13 @@
             for (let j = 0; j < m.removedNodes.length; j++) {
                 const node = m.removedNodes[j];
                 if (node.nodeType !== 1) continue;
+                // Обёртку и поддерево тоже считаем пропажей кнопки: страницы
+                // перерисовывают строку вкладок целиком, а не по одному узлу.
+                // Обёртки кастомных кнопок кнопку не содержат — их удаление
+                // (в том числе наше собственное) сюда не попадает.
                 if (node.id === 'usc-gear-btn'
-                    || (node.getAttribute && node.getAttribute('data-usc-hook') === 'trigger')) {
+                    || (node.getAttribute && node.getAttribute('data-usc-hook') === 'trigger')
+                    || (node.querySelector && node.querySelector('#usc-gear-btn'))) {
                     missingGear = true;
                     break;
                 }
@@ -3812,7 +4544,7 @@
     }
 
     /* ═══════════════════════════════════════════════════════════════════════
-       14. СТАРТ
+       15. СТАРТ
        ═══════════════════════════════════════════════════════════════════════ */
 
     GM_addStyle(navCss());

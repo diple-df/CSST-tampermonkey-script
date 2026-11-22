@@ -3,7 +3,7 @@
 > A Tampermonkey userscript for customizing the search tab bar in Google, Yandex, Bing, DuckDuckGo, Ecosia, Startpage, Brave Search, and Qwant.  
 > Hide unwanted tabs, rename them, redirect them to other services, and add your own custom buttons — all right inside the search engine's navigation bar.
 >
-> **Author:** diple_df x claude · **Version:** 1.3.0
+> **Author:** diple_df x claude · **Version:** 1.3.1
 
 ---
 
@@ -49,12 +49,14 @@ Go to any supported search engine and type a query — a settings button (≡) w
 | **Yandex** | `yandex.ru`, `yandex.com`, `yandex.by`, `yandex.kz`, `yandex.com.tr`, `ya.ru` | Red `#fc3f1d` | ✓ verified live |
 | **Bing** | `bing.com` | Teal `#008373` | ✓ verified live |
 | **DuckDuckGo** | `duckduckgo.com` | Orange `#de5833` | ✓ verified live |
-| **Ecosia** | `ecosia.org` | Green `#007a33` | ✓ verified live |
-| **Startpage** | `startpage.com` | Blue-teal `#0d7ea8` | ✓ verified live |
-| **Brave Search** | `search.brave.com` | Orange-red `#fb542b` | ✓ verified live |
+| **Ecosia** | `ecosia.org` | Green `#007a33` | ✓ selectors matched to real markup |
+| **Startpage** | `startpage.com` | Blue-teal `#0d7ea8` | ✓ selectors matched to real markup |
+| **Brave Search** | `search.brave.com` | Orange-red `#fb542b` | ✓ matched against live HTML |
 | **Qwant** | `qwant.com` | Purple `#4a4af4` | ✓ verified live |
 
 The button's size and alignment adapt to each engine's tab bar: it is smaller on Bing's short scopebar, rounder and larger on Google and Yandex, and so on.
+
+> "Verified live" means a run in a real browser on the real page. For Ecosia, Startpage and Brave the selectors were matched against their actual markup (live response for Brave; archived snapshots for Ecosia and Startpage), because from some networks all three serve a bot check. If the button does not appear for you, open the console and inspect `window.__csstDiag` (see below).
 
 Settings are stored **separately per search engine** — changes in Google do not affect Yandex.
 
@@ -232,8 +234,10 @@ You can run the check manually: Tampermonkey menu → **Check for updates**.
 ### How it works
 
 - Engine adapters are described as **data**: container selectors, wrapper, link class, and a declarative link-classification map. Functions remain only where real logic is needed.
-- The tab container is resolved through a cascade: engine selectors → stable anchor → "densest link cluster" → generic navigation heuristic. The winning strategy is remembered for the session and cached per pass.
-- Changes are tracked by a single debounced `MutationObserver` (no `setInterval`) with re-entrancy protection and a quiet window after the script's own DOM writes.
+- The tab container is resolved through a cascade: engine selectors → stable anchor → semantic `nav` → "densest link cluster" → generic tab-strip heuristic. Every candidate is validated: it must sit near the top of the page, must not be a search-bar autocomplete, and must contain at least two same-origin links. A stale selector therefore never throws and never parks the button in a random `<ul>`; the cascade simply moves on. The winning strategy is remembered for the session and cached per pass.
+- Changes are tracked by a single debounced `MutationObserver` (no `setInterval`) with re-entrancy protection and a quiet window after the script's own DOM writes. If the page re-renders the tab bar and removes the button together with its wrapper, the script puts it back on its own.
+- A tab is not necessarily a link: on Startpage it is a `<button>` inside a form, so both link tabs and button tabs are supported.
+- `window.__csstDiag` is available for debugging in the console: `{ engine, strategy, selector, container, tabs }` shows which cascade strategy won and which node the button was injected into. It stores nothing and sends nothing.
 - The panel lives in a Shadow DOM (`<csst-ui id="usc-ui-host">`), which protects it from page scripts that remove injected light-DOM elements.
 - All icons are inline SVG using `stroke="currentColor"` — no external resources, no web fonts.
 
@@ -241,6 +245,6 @@ You can run the check manually: Tampermonkey menu → **Check for updates**.
 
 | File | Script Name | Version | Status |
 |---|---|---|---|
-| `csst_tmprmnk.user.js` | Custom Search System Tabs | 1.3.0 | Current |
+| `csst_tmprmnk.user.js` | Custom Search System Tabs | 1.3.1 | Current |
 
 ---
