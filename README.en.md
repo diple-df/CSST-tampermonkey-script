@@ -5,6 +5,12 @@
 >
 > **Author:** diple_df x claude · **Version:** 1.3.2
 
+### Demo
+
+![CSST in action](docs/demo.gif)
+
+Opening the panel with the ≡ button, hiding the "All" tab, and adding a custom button — on live Bing in Microsoft Edge.
+
 ---
 
 ## Installation
