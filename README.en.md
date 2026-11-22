@@ -1,12 +1,11 @@
 # Custom Search System Tabs (CSST)
 
-> A Tampermonkey userscript for customizing the search tab bar in Google, Yandex, Bing, and DuckDuckGo.  
+> A Tampermonkey userscript for customizing the search tab bar in Google, Yandex, Bing, DuckDuckGo, Ecosia, Startpage, Brave Search, and Qwant.  
 > Hide unwanted tabs, rename them, redirect them to other services, and add your own custom buttons — all right inside the search engine's navigation bar.
 >
-> **Author:** diple_df x claude
+> **Author:** diple_df x claude · **Version:** 1.3.0
 
 ---
-
 
 ## Installation
 
@@ -38,23 +37,41 @@ Install the extension from your browser's official add-on store.
 
 ### Step 3 — Open Any Supported Search Engine
 
-Go to `google.com`, `yandex.com`, `bing.com`, or `duckduckgo.com`, type any query — a settings button (≡) will appear in the tab bar.
+Go to any supported search engine and type a query — a settings button (≡) will appear in the tab bar.
 
 ---
 
 ## Supported Search Engines
 
-| Search Engine | Domains | Accent Color |
-|---|---|---|
-| **Google** | `google.com`, `google.co.uk`, `google.ru` and all other regional domains | Blue `#4285f4` |
-| **Yandex** | `yandex.ru`, `yandex.com`, `yandex.by`, `yandex.kz`, `ya.ru` | Red `#fc3f1d` |
-| **Bing** | `bing.com` | Teal `#008373` |
-| **DuckDuckGo** | `duckduckgo.com` | Orange `#de5833` |
+| Search Engine | Domains | Accent Color | Button in tab bar |
+|---|---|---|---|
+| **Google** | `google.com`, `google.co.uk`, `google.ru` and all other regional domains | Blue `#4285f4` | ✓ verified live |
+| **Yandex** | `yandex.ru`, `yandex.com`, `yandex.by`, `yandex.kz`, `yandex.com.tr`, `ya.ru` | Red `#fc3f1d` | ✓ verified live |
+| **Bing** | `bing.com` | Teal `#008373` | ✓ verified live |
+| **DuckDuckGo** | `duckduckgo.com` | Orange `#de5833` | ✓ verified live |
+| **Ecosia** | `ecosia.org` | Green `#007a33` | ✓ verified live |
+| **Startpage** | `startpage.com` | Blue-teal `#0d7ea8` | ✓ verified live |
+| **Brave Search** | `search.brave.com` | Orange-red `#fb542b` | ✓ verified live |
+| **Qwant** | `qwant.com` | Purple `#4a4af4` | ✓ verified live |
+
+The button's size and alignment adapt to each engine's tab bar: it is smaller on Bing's short scopebar, rounder and larger on Google and Yandex, and so on.
 
 Settings are stored **separately per search engine** — changes in Google do not affect Yandex.
 
+---
 
 ## Features
+
+### The ≡ button and the quick tray
+
+A ≡ button appears in the search engine's tab bar. On hover (or keyboard focus) a compact tray floats under it with **exactly two actions**:
+
+1. **Hide/show the current tab** — the icon reflects the current state;
+2. **Open all settings** — the full panel.
+
+Anything that requires typing (renaming, redirects) deliberately lives only in the expanded panel. The tray is floating (`position: fixed`), so it never stretches the tab bar and is never clipped by its `overflow`.
+
+The button shows a **hidden-tab counter**, so the state is visible without opening the panel.
 
 ### Hide a Tab
 
@@ -74,7 +91,7 @@ Instead of opening the engine's own section, a tab can take you to any other web
 - **Images** tab on Yandex → opens **Google Images**
 - **Maps** tab on Google → opens **OpenStreetMap**
 
-Use `{query}` in the redirect URL — the script will automatically insert the current search query.
+Use `{query}` in the redirect URL — the script will automatically insert the current search query. If `{query}` is missing, the field is highlighted with an explanation.
 
 ### Add Custom Buttons
 
@@ -85,21 +102,54 @@ Usage examples:
 - Button "Amazon" → `https://www.amazon.com/s?k={query}`
 - Button "Translate" → `https://translate.google.com/?text={query}&sl=auto&tl=en`
 
+---
+
+## The Settings Panel
+
+The panel opens from the ≡ button (or the Tampermonkey menu) and contains:
+
+- a **filter** by tab name with a clear button, match counter, and a clear empty state;
+- the **engine tabs list** with grouped section headers;
+- **status chips** on each row: `hidden`, `name`, `redirect` — you can see what changed without expanding the row;
+- **row expansion** (chevron) with Label, Preset service, and Redirect URL fields;
+- **your own buttons** in a separate section, deletable in one click;
+- **safe mode** and **interface language** at the bottom of the list;
+- **export/import** of settings as JSON and a two-step **reset**.
+
+### Reordering tabs
+
+You can reorder tabs in the panel by dragging them (via the grip handle on the left) or with `Alt`+`↑`/`↓`. The order is saved and applied to the engine's tab bar. Until you actually move something, the engine's native order is preserved.
+
+### Safe mode
+
+If the search engine changed its markup and the script got in the way, enable **Safe mode (button only)**. The script then stops touching tabs entirely (no hiding, renaming, redirecting, or reordering), but the ≡ button and the panel keep working.
+
+### Interface language
+
+The language is detected automatically from the page's `lang` attribute, but you can pin it manually in the panel — the choice persists and no longer jumps on multilingual pages. For Arabic the panel switches to right-to-left (`dir="rtl"`): paddings, alignment, and panel anchoring are mirrored.
+
+---
 
 ## How to Use
 
 1. Open any supported search engine and type a query
-2. Look for the **≡** button (three horizontal lines) in the navigation tab bar — it's injected by the script
-3. Click it — a settings side panel will slide in from the right
-4. In the **Standard tabs** section, configure each tab:
-   - Toggle the **Hide** switch to remove a tab from the bar
-   - Edit the **Label** field to rename the tab
-   - Pick a preset service from the dropdown, or manually enter a **Redirect URL**
-5. In the **Custom buttons** section, click **+ Add button** to insert your own link
-6. Changes are applied instantly; close the panel with **×** or by clicking the backdrop
-7. The **Reset** button restores all settings to their defaults
+2. Look for the **≡** button in the navigation tab bar — it's injected by the script
+3. Click it — the settings panel opens next to the button
+4. In the **Search engine tabs** section, configure each tab:
+   - Click the eye icon to hide or show a tab
+   - Expand the row with the chevron and edit the **Label**
+   - Pick a preset service from the dropdown, or enter a **Redirect URL** manually
+5. In the **My buttons** section, click **Add button** to insert your own link
+6. Changes are applied instantly; the panel closes on `Esc`, an outside click, or the close button
+7. The **Reset** button requires a second click to confirm and restores the defaults
 
-> If the **≡** button does not appear in the tab bar, open the settings via the Tampermonkey extension menu → script → **⚙ Customize search tabs**.
+> If the **≡** button does not appear in the tab bar, open the settings via the Tampermonkey extension menu → script → **Customize search tabs**.
+
+### When tabs are not found
+
+After a markup change the list may come up empty. In that case the panel shows a **"Show all known tabs"** button instead of bare text — settings stay reachable even if auto-detection broke.
+
+The script also checks page shape, not just the hostname: if the tab container cannot be found several times in a row, it quietly does not interfere instead of dropping a button in a random place.
 
 ---
 
@@ -120,10 +170,7 @@ For a query like `funny cats`, the URL `https://www.youtube.com/results?search_q
 
 ---
 
-
 ## Supported UI Languages
-
-The settings panel switches language automatically based on the search engine page's `lang` attribute:
 
 | Code | Language |
 |---|---|
@@ -137,6 +184,35 @@ The settings panel switches language automatically based on the search engine pa
 | `tr` | Turkish |
 | `it` | Italian |
 | `pl` | Polish |
+| `zh` | Chinese |
+| `ja` | Japanese |
+| `ko` | Korean |
+| `hi` | Hindi |
+| `ar` | Arabic (right-to-left) |
+
+---
+
+## Privacy
+
+Only the following is written to storage (`GM_setValue`):
+
+- labels of tabs and custom buttons;
+- redirect and custom-button URLs (the template with `{query}`);
+- flags: per-tab `hidden`, `safeMode`;
+- tab order;
+- the chosen interface language and the config schema version.
+
+**Search queries are never stored.** `{query}` is substituted at click/apply time and lives only in the DOM. The script makes no requests to third-party services except one update check (see below).
+
+### Import and export
+
+Export is plain JSON you can copy or download as a file. Import is **validated against a schema**: the schema version and field types are checked. Broken or foreign JSON is rejected with a clear message and never reaches your settings.
+
+### Update check
+
+Besides Tampermonkey's passive update mechanism (`@updateURL`/`@downloadURL`), the script checks its current version once a day: while idle (`requestIdleCallback`) it downloads its own raw file from `raw.githubusercontent.com` and compares version numbers. The request happens at most once per day, times out after 15 seconds, and any error fails silently. If a newer version exists, a banner with a link to the file is shown once per version.
+
+You can run the check manually: Tampermonkey menu → **Check for updates**.
 
 ---
 
@@ -144,23 +220,27 @@ The settings panel switches language automatically based on the search engine pa
 
 ### Granted Permissions
 
-The script requests a minimal set of permissions:
-
 | Permission | Purpose |
 |---|---|
 | `GM_getValue` | Reading saved settings |
 | `GM_setValue` | Saving settings |
-| `GM_addStyle` | Injecting panel styles |
+| `GM_addStyle` | Injecting tab-bar button styles |
 | `GM_registerMenuCommand` | Fallback entry point via the Tampermonkey menu |
+| `GM_xmlhttpRequest` | Update check (only `raw.githubusercontent.com`) |
+| `@connect raw.githubusercontent.com`, `@connect github.com` | Allowing the update check |
 
-The script **does not send any data** to external services.
+### How it works
 
+- Engine adapters are described as **data**: container selectors, wrapper, link class, and a declarative link-classification map. Functions remain only where real logic is needed.
+- The tab container is resolved through a cascade: engine selectors → stable anchor → "densest link cluster" → generic navigation heuristic. The winning strategy is remembered for the session and cached per pass.
+- Changes are tracked by a single debounced `MutationObserver` (no `setInterval`) with re-entrancy protection and a quiet window after the script's own DOM writes.
+- The panel lives in a Shadow DOM (`<csst-ui id="usc-ui-host">`), which protects it from page scripts that remove injected light-DOM elements.
+- All icons are inline SVG using `stroke="currentColor"` — no external resources, no web fonts.
 
-### Script Versions
+### Script versions
 
 | File | Script Name | Version | Status |
 |---|---|---|---|
-| `csst_tmprmnk.js` | Custom Search System Tabs | 1.0.0 | Current |
-| `ddg-tab-customizer.js` | DuckDuckGo Tab Customizer | 1.2.0 | Legacy |
+| `csst_tmprmnk.user.js` | Custom Search System Tabs | 1.3.0 | Current |
 
 ---
