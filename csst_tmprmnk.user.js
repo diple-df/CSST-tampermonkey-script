@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Custom Search System Tabs
 // @namespace    https://github.com/diple-df/CSST-tampermonkey-script
-// @version      1.3.1
+// @version      1.3.2
 // @description  Скрывай, переименовывай, перенаправляй и добавляй кнопки-вкладки поиска. Google, Яндекс, Bing, DuckDuckGo, Ecosia, Startpage, Brave Search и Qwant. Поддержка {query} для подстановки запроса.
 // @author       diple_df x claude
 // @match        *://duckduckgo.com/*
@@ -2043,10 +2043,29 @@
         ].join('\n');
     }
 
+    // textContent включает содержимое <style>/<script>, а у Startpage раздел —
+    // это <button> со вложенным <style>, из-за чего подпись вкладки превращалась
+    // в «.css-knhteg{font-size:14px;…». Собираем текст только по видимым узлам.
+    function visibleText(el) {
+        let out = '';
+        const walk = (node) => {
+            for (let i = 0; i < node.childNodes.length; i++) {
+                const child = node.childNodes[i];
+                if (child.nodeType === 3) { out += child.textContent; continue; }
+                if (child.nodeType !== 1) continue;
+                const tag = child.tagName;
+                if (tag === 'STYLE' || tag === 'SCRIPT' || tag === 'NOSCRIPT' || tag === 'TEMPLATE') continue;
+                walk(child);
+            }
+        };
+        walk(el);
+        return out;
+    }
+
     function cleanLabel(el) {
         const spans = [...el.querySelectorAll('span')]
             .filter(s => s.children.length === 0 && s.textContent.trim());
-        let txt = spans.length ? spans[spans.length - 1].textContent : el.textContent;
+        let txt = spans.length ? spans[spans.length - 1].textContent : visibleText(el);
         txt = (txt || '').replace(/\s+/g, ' ').trim();
         return txt.length > 40 ? txt.slice(0, 40).trim() : txt;
     }
@@ -2171,7 +2190,6 @@
 
         reorderTabs(cfg, container);
         injectItems(cfg, container);
-        if (document.querySelector('[data-usc-hook="tray"]')) renderTray();
     }
 
     function hideAllInterference() {
@@ -2367,6 +2385,11 @@
        Показ/скрытие — по наведению, фокусу и «закреплению» после клика.
        ═══════════════════════════════════════════════════════════════════════ */
 
+    // Пока пользователь не трогал свои кнопки, панель не имеет права
+    // переписывать список: в момент перерисовки/смены языка/timer-гонки
+    // DOM бывает пуст, и запись стирала все кастомные кнопки.
+    let _customDirty = false;
+
     let _trayHideTimer = null;
 
     function currentTabCfg() {
@@ -2389,17 +2412,14 @@
         btn.setAttribute('aria-expanded', 'false');
         btn.setAttribute('aria-label', t('gearTitle'));
         btn.title = t('gearTitle') + ' — ' + ENGINE.name;
-        btn.innerHTML = '<span class="usc-gear-ico" aria-hidden="true">' + icon('menu', 17) + '</span>'
-                      + '<span class="usc-badge" aria-hidden="true" hidden></span>';
+        // Только иконка: ни бейджа со счётчиком, ни всплывающего трея
+        // по наведению — панель открывается кликом.
+        btn.innerHTML = '<span class="usc-gear-ico" aria-hidden="true">' + icon('menu', 17) + '</span>';
         btn.addEventListener('click', function (e) {
             e.preventDefault();
             e.stopPropagation();
             togglePanel();
         });
-        btn.addEventListener('mouseenter', showTray);
-        btn.addEventListener('focus', showTray);
-        btn.addEventListener('mouseleave', scheduleHideTray);
-        btn.addEventListener('blur', scheduleHideTray);
         return btn;
     }
 
@@ -2521,6 +2541,7 @@
     }
 
     function updateBadge(cfg) {
+        // Счётчик на иконке убран по просьбе: он отвлекал.
         const btn = document.getElementById('usc-gear-btn');
         if (!btn) return;
         const badge = btn.querySelector('.usc-badge');
@@ -2586,7 +2607,6 @@
             }
         }
         updateBadge(cfg);
-        if (!document.querySelector('[data-usc-hook="tray"]')) renderTray();
     }
 
     /* ═══════════════════════════════════════════════════════════════════════
@@ -3269,6 +3289,9 @@
     function liveSave(cfg) {
         clearTimeout(_liveTimer);
         _liveTimer = setTimeout(() => {
+            // Панель могла закрыться за эти 180 мс (смена языка, импорт):
+            // тогда читать DOM нельзя — соберём пустоту и затрём конфиг.
+            if (!uiEl('usc-panel')) return;
             collectAndSave(cfg);
             applyConfig();
             flashSaved();
@@ -3309,16 +3332,24 @@
             }
             if (hideBtn) cfg.tabs[key].hidden = hideBtn.getAttribute('aria-pressed') === 'true';
         });
-        // кастомные
-        cfg.customTabs = [];
-        uiAll('.usc-custom').forEach(row => {
-            const labelInp = row.querySelector('.usc-ci-label');
-            const urlInp   = row.querySelector('.usc-ci-url');
-            if (!labelInp || !urlInp) return;
-            const label = labelInp.value.trim();
-            const url   = urlInp.value.trim();
-            if (label && url) cfg.customTabs.push({ id: row.dataset.id, label, url });
-        });
+        // Кастомные кнопки. Если контейнера нет в DOM (панель закрывается,
+        // перерисовывается или меняется язык), НЕ обнуляем список: раньше
+        // отложенный live-save успевал сработать между closePanel и openPanel
+        // и стирал все свои кнопки.
+        const customBox = uiEl('usc-custom-rows');
+        if (customBox && _customDirty) {
+            const nextCustom = [];
+            uiAll('.usc-custom').forEach(row => {
+                const labelInp = row.querySelector('.usc-ci-label');
+                const urlInp   = row.querySelector('.usc-ci-url');
+                if (!labelInp || !urlInp) return;
+                const label = labelInp.value.trim();
+                const url   = urlInp.value.trim();
+                if (label && url) nextCustom.push({ id: row.dataset.id, label, url });
+            });
+            cfg.customTabs = nextCustom;
+            _customDirty = false;
+        }
         // порядок: только то, что реально перечислено в панели
         const order = [];
         uiAll('.usc-row').forEach(r => { if (r.dataset.key) order.push(r.dataset.key); });
@@ -3394,6 +3425,9 @@
             _langOverride = code === 'auto' ? null : code;
             PRESETS = buildPresets(activeLang());
             // Перерисовываем панель под новый язык, не теряя настройки.
+            // Отложенный live-save гасим: он читал уже удалённый DOM.
+            clearTimeout(_liveTimer);
+            _customDirty = false;
             const keepOpen = _openKeys;
             const savedCfg = getCfg();
             closePanel(false);
@@ -3409,6 +3443,7 @@
         // ── Добавить свою кнопку ──
         const addBtn = uiEl('usc-add-custom');
         if (addBtn) addBtn.onclick = () => {
+            _customDirty = true;
             const row = appendCustomRow();
             const inp = row && row.querySelector('.usc-ci-label');
             if (inp) inp.focus();
@@ -3458,6 +3493,7 @@
             if (!del) return;
             const row = del.closest('.usc-custom');
             if (!row) return;
+            _customDirty = true;
             row.style.opacity = '0';
             row.style.transform = 'scale(.96)';
             setTimeout(() => {
@@ -3478,7 +3514,8 @@
                 if (tgt.classList.contains('usc-url-inp')) validateUrlField(tgt);
                 if (tgt.classList.contains('usc-ci-url')) validateCustomUrl(tgt);
                 if (tgt.classList.contains('usc-label-inp')) updateRowName(tgt);
-                if (tgt.classList.contains('usc-ci-label')) updateCustomName(tgt);
+                if (tgt.classList.contains('usc-ci-label')) { _customDirty = true; updateCustomName(tgt); }
+                if (tgt.classList.contains('usc-ci-url')) _customDirty = true;
                 if (tgt.closest('.usc-sheet')) return;
                 liveSave(cfg);
             });
@@ -3527,6 +3564,7 @@
             resetBtn.classList.remove('is-danger');
             const lbl = uiEl('usc-reset-label');
             if (lbl) lbl.textContent = t('reset');
+            _customDirty = false;
             setCfg(defaultConfig());
             applyConfig();
             closePanel(false);
@@ -3757,15 +3795,48 @@
             } catch (_) {}
         };
 
+        // Импорт — через файл. Раньше просили вставить JSON руками; это
+        // неудобно и легко испортить переносом строк. Экспорт по-прежнему
+        // и скачивает .json, и показывает текст.
+        let fileInput = document.getElementById('usc-import-file');
+        if (!fileInput) {
+            fileInput = document.createElement('input');
+            fileInput.type = 'file';
+            fileInput.id = 'usc-import-file';
+            fileInput.accept = '.json,application/json';
+            fileInput.style.display = 'none';
+            const hostEl = (uiRoot && uiRoot.host) ? uiRoot.host : document.body;
+            hostEl.appendChild(fileInput);
+        }
+        const failImport = (msg) => {
+            announce(msg);
+            if (hint) { hint.textContent = msg; hint.classList.add('is-bad'); }
+        };
+        const applyJson = (raw) => {
+            let parsed;
+            try { parsed = JSON.parse(raw); } catch (_) { failImport(t('notJson')); return; }
+            const res = validateConfig(parsed, { strict: true });
+            if (!res.ok) { failImport(t(res.error) || t('importBad')); return; }
+            if (hint) { hint.classList.remove('is-bad'); }
+            setCfg(res.cfg);
+            applyConfig();
+            hide();
+            closePanel(false);
+            setTimeout(() => { _panelOpen = false; openPanel(); }, 190);
+            announce(t('importOk'));
+        };
+        fileInput.onchange = () => {
+            const f = fileInput.files && fileInput.files[0];
+            if (!f) return;
+            const reader = new FileReader();
+            reader.onload = () => { applyJson(String(reader.result || '')); fileInput.value = ''; };
+            reader.onerror = () => { failImport(t('importBad')); fileInput.value = ''; };
+            reader.readAsText(f);
+        };
         const imp = uiEl('usc-import');
         if (imp) imp.onclick = () => {
-            if (title) title.textContent = t('importTitle');
-            if (hint) hint.textContent = t('importHint');
-            if (text) { text.value = ''; text.readOnly = false; text.placeholder = t('importHint'); }
-            if (copyBtn) copyBtn.hidden = true;
-            if (applyBtn) applyBtn.hidden = false;
-            if (sheet) sheet.classList.add('is-on');
-            if (text) text.focus();
+            if (hint) hint.classList.remove('is-bad');
+            try { fileInput.value = ''; fileInput.click(); } catch (_) { announce(t('importBad')); }
         };
 
         if (copyBtn) copyBtn.onclick = () => {
@@ -4173,7 +4244,7 @@
        баннером один раз на версию. Любая ошибка гасится молча.
        ═══════════════════════════════════════════════════════════════════════ */
 
-    const SCRIPT_VERSION = '1.3.1';
+    const SCRIPT_VERSION = '1.3.2';
     const UPDATE_URL = 'https://raw.githubusercontent.com/diple-df/CSST-tampermonkey-script/main/csst_tmprmnk.user.js';
     const UPDATE_META_KEY = 'usc_update_meta';
     const UPDATE_CHECK_EVERY = 24 * 60 * 60 * 1000;   // сутки

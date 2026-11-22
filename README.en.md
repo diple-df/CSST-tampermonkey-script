@@ -3,7 +3,7 @@
 > A Tampermonkey userscript for customizing the search tab bar in Google, Yandex, Bing, DuckDuckGo, Ecosia, Startpage, Brave Search, and Qwant.  
 > Hide unwanted tabs, rename them, redirect them to other services, and add your own custom buttons — all right inside the search engine's navigation bar.
 >
-> **Author:** diple_df x claude · **Version:** 1.3.1
+> **Author:** diple_df x claude · **Version:** 1.3.2
 
 ---
 
@@ -68,16 +68,9 @@ Settings are stored **separately per search engine** — changes in Google do no
 
 ## Features
 
-### The ≡ button and the quick tray
+### The ≡ button
 
-A ≡ button appears in the search engine's tab bar. On hover (or keyboard focus) a compact tray floats under it with **exactly two actions**:
-
-1. **Hide/show the current tab** — the icon reflects the current state;
-2. **Open all settings** — the full panel.
-
-Anything that requires typing (renaming, redirects) deliberately lives only in the expanded panel. The tray is floating (`position: fixed`), so it never stretches the tab bar and is never clipped by its `overflow`.
-
-The button shows a **hidden-tab counter**, so the state is visible without opening the panel.
+A single ≡ button appears in the search engine's tab bar. Clicking it opens the settings panel and nothing else: no floating tray on hover, no counter on the icon. Everything lives in the panel.
 
 ### Hide a Tab
 
@@ -212,7 +205,7 @@ Only the following is written to storage (`GM_setValue`):
 
 ### Import and export
 
-Export is plain JSON you can copy or download as a file. Import is **validated against a schema**: the schema version and field types are checked. Broken or foreign JSON is rejected with a clear message and never reaches your settings.
+Export is plain JSON you can copy or download as a file. Import works through a **file picker**: the script reads the chosen file and **validates it against a schema** — the schema version and field types are checked. Broken or foreign JSON is rejected with a clear message and never reaches your settings.
 
 ### Update check
 
@@ -249,6 +242,6 @@ You can run the check manually: Tampermonkey menu → **Check for updates**.
 
 | File | Script Name | Version | Status |
 |---|---|---|---|
-| `csst_tmprmnk.user.js` | Custom Search System Tabs | 1.3.1 | Current |
+| `csst_tmprmnk.user.js` | Custom Search System Tabs | 1.3.2 | Current |
 
 ---
