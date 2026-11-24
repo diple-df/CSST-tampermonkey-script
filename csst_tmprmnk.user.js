@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Custom Search System Tabs
 // @namespace    https://github.com/diple-df/CSST-tampermonkey-script
-// @version      1.3.3
+// @version      1.3.4
 // @description  Скрывай, переименовывай, перенаправляй и добавляй кнопки-вкладки поиска. Google, Яндекс, Bing, DuckDuckGo, Ecosia, Startpage, Brave Search и Qwant. Поддержка {query} для подстановки запроса.
 // @author       diple_df x claude
 // @match        *://duckduckgo.com/*
@@ -79,7 +79,7 @@
 
     // Вкладка — не обязательно ссылка: у Startpage это <button role="link">
     // внутри <form>. Один общий селектор, чтобы все места согласовались.
-    const TAB_SELECTOR = 'a[href], button[role="link"], [role="tab"], [data-usc-key]';
+    const TAB_SELECTOR = 'a[href], a[role="link"], button[role="link"], [role="tab"], [data-usc-key]';
 
     function isTabNode(el) {
         if (!el || !el.tagName) return false;
@@ -2109,8 +2109,19 @@
         if (!container) return [];
         const found = [], seen = new Set();
         tabEls(container).forEach(el => {
-            const key = keyOf(el);
-            if (!key || seen.has(key)) return;
+            let key = keyOf(el);
+            if (!key) return;
+            // Две разные вкладки одного вида (например «Видео» и «Короткие
+            // видео» у Google обе udm-видео) получали один ключ, вторая
+            // выбрасывалась дедупом и пропадала из панели. Даём ей свой ключ
+            // по подписи — тогда её видно и можно скрыть.
+            if (seen.has(key)) {
+                const lab = cleanLabel(el);
+                if (!lab) return;
+                const alt = key + '#' + lab.toLowerCase();
+                if (seen.has(alt)) return;
+                key = alt;
+            }
             seen.add(key);
             found.push({ key, label: cleanLabel(el), el });
         });
@@ -2174,15 +2185,21 @@
             if (!key || seen.has(key)) return;
             seen.add(key);
 
-            const tabCfg = cfg.tabs[key];
-            if (!tabCfg) { restoreTab(link); return; }
+            let tabCfg = cfg.tabs[key];
+            if (!tabCfg) {
+                // Раньше незнакомая вкладка только восстанавливалась, и до
+                // первого открытия панели её нельзя было скрыть. Создаём
+                // запись сразу — панель потом её подхватит.
+                tabCfg = cfg.tabs[key] = { hidden: false, label: null, redirectUrl: null };
+            }
 
             if (tabCfg.hidden) { hideTab(link, container); return; }
             showTab(link);
 
             const canonical = canonicalLabel(key);
-            const wanted = tabCfg.label || canonical;
-            setLinkText(link, wanted, canonical);
+            // Без пользовательского имени нативный текст не трогаем:
+            // иначе Google «Все» превращалось в «Веб».
+            setLinkText(link, tabCfg.label || null, canonical);
 
             if (tabCfg.redirectUrl) applyRedirect(link, key, tabCfg.redirectUrl);
             else if (link.hasAttribute('data-usc-redirect')) clearRedirect(link);
@@ -4248,7 +4265,7 @@
        баннером один раз на версию. Любая ошибка гасится молча.
        ═══════════════════════════════════════════════════════════════════════ */
 
-    const SCRIPT_VERSION = '1.3.3';
+    const SCRIPT_VERSION = '1.3.4';
     const UPDATE_URL = 'https://raw.githubusercontent.com/diple-df/CSST-tampermonkey-script/main/csst_tmprmnk.user.js';
     const UPDATE_META_KEY = 'usc_update_meta';
     const UPDATE_CHECK_EVERY = 24 * 60 * 60 * 1000;   // сутки
