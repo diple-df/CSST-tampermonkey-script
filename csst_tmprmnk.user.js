@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Custom Search System Tabs
 // @namespace    https://github.com/diple-df/CSST-tampermonkey-script
-// @version      1.3.4
+// @version      1.3.5
 // @description  Скрывай, переименовывай, перенаправляй и добавляй кнопки-вкладки поиска. Google, Яндекс, Bing, DuckDuckGo, Ecosia, Startpage, Brave Search и Qwant. Поддержка {query} для подстановки запроса.
 // @author       diple_df x claude
 // @match        *://duckduckgo.com/*
@@ -2198,8 +2198,14 @@
 
             const canonical = canonicalLabel(key);
             // Без пользовательского имени нативный текст не трогаем:
-            // иначе Google «Все» превращалось в «Веб».
-            setLinkText(link, tabCfg.label || null, canonical);
+            // иначе Google «Все» превращалось в «Веб». Имя из конфига
+            // применяем только если оно отличается и от канонического,
+            // и от нативного текста — старые версии могли засохнуть
+            // с именем, совпадающим с каноническим.
+            const native = cleanLabel(link);
+            const lbl = tabCfg.label;
+            const eff = (lbl && lbl !== canonical && lbl !== native) ? lbl : null;
+            setLinkText(link, eff, canonical);
 
             if (tabCfg.redirectUrl) applyRedirect(link, key, tabCfg.redirectUrl);
             else if (link.hasAttribute('data-usc-redirect')) clearRedirect(link);
@@ -3345,7 +3351,10 @@
             const hideBtn  = row.querySelector('.usc-act-hide');
             if (labelInp) {
                 const v = labelInp.value.trim();
-                cfg.tabs[key].label = v ? v : null;
+                // Имя, совпадающее с каноническим или нативным, — это
+                // отсутствие переименования, не пишем его в конфиг.
+                const can = canonicalLabel(key);
+                cfg.tabs[key].label = (v && v !== can && v !== row.dataset.native) ? v : null;
             }
             if (urlInp) {
                 const v = urlInp.value.trim();
@@ -4265,7 +4274,7 @@
        баннером один раз на версию. Любая ошибка гасится молча.
        ═══════════════════════════════════════════════════════════════════════ */
 
-    const SCRIPT_VERSION = '1.3.4';
+    const SCRIPT_VERSION = '1.3.5';
     const UPDATE_URL = 'https://raw.githubusercontent.com/diple-df/CSST-tampermonkey-script/main/csst_tmprmnk.user.js';
     const UPDATE_META_KEY = 'usc_update_meta';
     const UPDATE_CHECK_EVERY = 24 * 60 * 60 * 1000;   // сутки
